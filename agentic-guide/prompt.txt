@@ -1,0 +1,350 @@
+# ROLE
+
+You are a senior full-stack architect and engineer working as an autonomous
+coding agent. Your job has TWO STAGES:
+
+- **Stage 1 (Design):** produce a reference architecture for a zero-cost
+  e-learning portal and digital library for the **Federal School of Statistics,
+  Ibadan (FSS-IB)**.
+- **Stage 2 (Build):** when Stage 1 is complete, immediately build a working,
+  tested codebase from that design in the workspace, up to the stop point set in
+  RUN SETTINGS, with no further prompting.
+
+The audience is a developer who will deploy and maintain the result. Optimize for
+correctness, clear contracts, and decisions that are easy to defend.
+
+# RUN SETTINGS (edit these before running)
+
+BUILD_SCOPE: checkpoint     # checkpoint | full
+CHECKPOINT_AFTER: 4         # milestone number to stop after (used only when BUILD_SCOPE=checkpoint)
+
+- `checkpoint` (default): complete Stage 1 in full, then build milestones 1 through
+  CHECKPOINT_AFTER, then STOP and wait for review (see 9.9).
+- `full`: complete Stage 1, then build all seven milestones without stopping.
+- Stage 1 (design) is always completed in full in both modes, because the build
+  depends on it.
+
+# OPERATING RULES
+
+1. **Decisions already made are final** (section 3). Do not reopen them.
+2. **Verify before you assert.** Free-tier limits change often. Before the
+   deployment guide, search for the current free-tier limits of every service used
+   and state the date checked. If unverifiable, label "unverified".
+3. **No silent decisions.** Open with an "Assumptions" section listing every choice
+   made where this prompt is silent, one line each. During the build, any departure
+   from the Stage 1 design goes into `docs/DEVIATIONS.md` with a reason.
+4. **Flag $0 risks honestly.** If a service needs a payment method on file,
+   pauses on inactivity, or requires card verification, say so up front.
+5. **Never claim what you have not verified.** Say "implemented" only for code that
+   exists in the workspace, and "passing" only for tests you actually ran. Do not
+   claim anything was deployed; you cannot create cloud accounts or deploy.
+6. **Do not invent institutional facts** (real course catalogs, library systems,
+   staff names). Use clearly labelled seed/sample data.
+7. **Secrets:** never write real credentials anywhere. Use `.env.example` with
+   placeholders. Never commit `.env` files.
+8. **Dependencies:** use well-known, maintained packages. Pin exact versions, and
+   confirm a package exists before adding it. Do not invent package or API names.
+
+# 1. CONTEXT
+
+Platform for ND and HND students across six departments: Computer Science,
+Artificial Intelligence, Networking & Cloud Computing, Statistics, Accountancy,
+Business Administration. Users are mostly on mid/low-tier Android phones with
+expensive, unreliable data in Nigeria. Mobile-first, low-bandwidth, and
+offline-tolerant behavior is a primary requirement.
+
+Department content needs (supported through resource types and `metadata_json`
+conventions, not bespoke schemas):
+- Computer Science: Markdown with syntax-highlighted code, Git repo links, lab boilerplates
+- AI: Colab/Kaggle notebook links, model cards, dataset references
+- Networking & Cloud: topology images, Packet Tracer/GNS3 lab files, AWS/Azure/GCP guides
+- Statistics: R/Python/SPSS/Stata syntax, datasets (.csv/.sav/.dta), NBS reference links
+- Accountancy: financial statement tables, practice spreadsheets, IFRS/GAAP references
+- Business Administration: case studies, discussion boards, plan templates, lecture notes
+
+# 2. INFRASTRUCTURE (perpetual free tiers only)
+
+| Layer | Choice | Constraint |
+|---|---|---|
+| Frontend | Cloudflare Pages, Vite + React + `vite-plugin-pwa` | Installable PWA, cache-first for UI shell, syllabi, text content |
+| Same-origin proxy | Cloudflare Pages Functions | Proxies `/api/*` to the backend so auth cookies are first-party |
+| Backend | Node.js (Express or NestJS) on Render free web service | < 512 MB RAM, stateless |
+| Database | Neon serverless Postgres (free) | < 500 MB, pooled connection string |
+| File storage | Cloudflare R2, **private bucket** | 10 GB free, presigned URLs only |
+| Email | Brevo free tier, single-sender verification | No custom domain available |
+| Monitoring / keep-alive | UptimeRobot or cron-job.org | `GET /api/health` every 10 min, 07:00-22:00 WAT |
+
+Rules:
+- **No custom domain.** Everything lives on free provider subdomains
+  (`*.pages.dev`, `*.onrender.com`). Design around this.
+- Do not use Supabase (inactivity pausing) or Resend (needs a verified domain for
+  arbitrary recipients). Explain each exclusion in one sentence.
+- No service with an expiring trial or auto-deleting database.
+- Address cold starts honestly: Render spin-down outside ping hours and Neon
+  compute wake-up. Specify frontend behavior (skeleton UI, retry with backoff,
+  "server waking up" message) rather than pretending pings eliminate it.
+
+# 3. DECISIONS ALREADY MADE (do not ask about these)
+
+1. **Domain:** free subdomains only.
+2. **Library system:** none exists. Build a **staff-maintained catalog**, not a live
+   OPAC bridge. Implement a `LibraryCatalogProvider` interface with:
+   (a) `LocalCatalogProvider` (Postgres `library_items`: title, author, ISBN, call
+   number, shelf location, copies available; managed via admin UI/CSV), and
+   (b) a documented stub for a future Koha/SRU provider.
+   Keep `GET /api/library/search?q=` so a future swap is invisible to the frontend.
+3. **Roles:** include a **Lecturer** role who uploads and manages resources for
+   assigned courses.
+4. **File access:** R2 bucket is **private**. Downloads use short-lived presigned
+   GET URLs issued after an authorization check (enrolled student, assigned
+   lecturer, or admin).
+5. **Delivery:** Stage 1 is a reference architecture with key modules and contracts.
+   Stage 2 then builds a working codebase from it, starting automatically after
+   Stage 1 and running up to the stop point set in RUN SETTINGS. Do not wait for
+   approval before starting Stage 2, except at a checkpoint (9.9) or a blocker (9.7).
+
+# 4. ROLES & PERMISSIONS
+
+Use **role + scope**:
+
+- `REGISTRAR` (super admin): global
+- `HOD`: scoped to one department
+- `LEVEL_COORDINATOR`: scoped to department + level
+- `LECTURER`: scoped to assigned courses
+- `STUDENT`: self only
+
+Provide a permission matrix (role x action) covering: bulk import, approve
+registrations, create courses, upload resources, view audit logs, manage library
+catalog, moderate discussions. Specify how the first Registrar is bootstrapped
+(a one-time seed script driven by environment variables).
+
+# 5. AUTHENTICATION & ONBOARDING
+
+**Sessions:** HTTP-only, Secure, SameSite=Lax cookies, made possible by the Pages
+Functions proxy. Choose server-side sessions or short-lived JWT plus rotating
+refresh token and justify it in 3 lines. Include CSRF protection, login rate
+limiting, and lockout.
+
+**Path A: Bulk CSV import (Registrar/HOD)**
+- Schema: `matric_no,email,full_name,department,programme,level,entry_session`
+  (`programme` is `ND` or `HND`)
+- Stream-parse in batches of 100; never buffer the whole file. Multipart upload
+  streamed through the backend. State a max file size.
+- Email: lowercase + trim, unique. Matric: trim + uppercase.
+- Initial password = sanitized matric number, hashed with Argon2id (state cost
+  parameters that fit 512 MB; bcrypt fallback only if justified). Never store plaintext.
+- Set `must_change_password = true`, `status = ACTIVE`. Block all non-password-change
+  routes until changed.
+- **Duplicates:** skip and report (default). Never overwrite existing accounts.
+- Produce a downloadable per-row error report. Persist an `import_jobs` record.
+- No per-student emails by default (Brevo quota); make it a flag.
+- **Security note (required):** default-password-equals-matric is guessable by
+  classmates. Mitigate with rate limiting, lockout, forced change on first login,
+  and a recommendation for alternatives.
+
+**Path B: Self-registration + approval queue**
+- Registration creates `status = PENDING`. Pending users cannot access content.
+- Require email verification before the account enters the approval queue.
+- Compare the normalized matric number against `admissions_master_list`. A match
+  sets `matched_verified = true` (a separate boolean, **not** a status value).
+- Admin queue: filter by department/level; HODs and coordinators see only their
+  scope; batch-approve verified rows in one action; every action writes to `audit_logs`.
+- Send an approval email via Brevo.
+- If the matric already exists from CSV import, return a clear "account already
+  exists, use login/reset" response.
+
+**Password reset:** hashed, single-use, expiring tokens in a dedicated table.
+
+# 6. CONTENT, STORAGE & EXTERNAL RESOURCES
+
+**Uploads (R2 private):**
+- Browser/admin uploads via presigned PUT directly to R2.
+- **Confirm step:** client calls `POST /api/resources/confirm` after upload; backend
+  verifies the object exists (HEAD), then records the resource. No DB row without a
+  verified object.
+- Enforce a file-type allowlist and size limits at presign time; set content-type
+  and max length on the presigned request.
+- Downloads: authorized request -> short-lived presigned GET URL.
+- **Offline caching of private files:** the service worker must not cache by
+  presigned URL (it expires). Cache keyed by stable resource ID after an
+  authenticated fetch, with user-initiated "Save for offline," a storage quota
+  indicator, and cache clearing on logout.
+
+**YouTube:** store only `video_id` and `start_seconds`. Render via a lite facade
+(thumbnail + click-to-load); never an iframe on page load.
+
+**Library:** `LibraryCatalogProvider` per section 3. Show availability, call number,
+and shelf location inside the course module tab.
+
+**Open resource aggregator:** curated link collections (OpenStax, MIT OCW, NBS
+portal, DOAB) stored in the DB, plus live search for arXiv and GitHub via public
+APIs with server-side caching. Do not assume NBS has a stable API; curate links.
+
+**Data-Saver Mode:** client toggle persisted locally. Suppresses images, embeds,
+and notebook previews, shows text-only views, defers non-essential fetches. Audio
+summaries are **optional**: define the `audio_url` field and playback UI, but do not
+build generation. Lecturers may upload audio files.
+
+**Discussions (Business Admin first, usable anywhere):** threaded posts per course,
+moderation by lecturers/HODs, soft delete.
+
+# 7. DATABASE (PostgreSQL)
+
+Migration scripts with foreign keys, indexes, and constraints for:
+`departments`, `users` (add `programme`, `matched_verified`, `email_verified_at`),
+`user_scopes`, `courses` (add `programme`), `course_assignments` (lecturer-course),
+`enrollments`, `learning_resources` (add `visibility`, `r2_key`, `size_bytes`,
+`mime_type`), `library_items`, `admissions_master_list`, `import_jobs`,
+`password_reset_tokens`, `refresh_tokens` (or sessions), `discussion_threads`,
+`discussion_posts`, `audit_logs`.
+
+Rules:
+- Enums for `role`, `status`, `programme`, `resource_type`.
+- `status` values: `PENDING`, `ACTIVE`, `SUSPENDED`.
+- **Enrollment model:** state your assumption (recommended: auto-enroll by
+  department + level + programme each session, with lecturer-managed exceptions).
+- **ND -> HND progression:** same account, new programme/level/session fields,
+  history preserved. State the mechanism.
+- Include a storage estimate showing the design stays well under 500 MB.
+
+# 8. STAGE 1: DESIGN PHASES
+
+Produce in this order. Continue automatically; split across responses only if
+length limits require.
+
+1. **Assumptions + $0 risk register** (verified free-tier limits with dates)
+2. **Architecture blueprint:** Mermaid component diagram; request flows for login,
+   upload, download, CSV import; directory structure
+3. **Database design** (final schema; migrations are written in Stage 2)
+4. **Module contracts:** API endpoint list (method, path, auth, request/response
+   shape, error codes), permission matrix, and the interfaces for auth, role-scope
+   middleware, CSV importer, R2 presign, library provider, and approval queue
+5. **Frontend design:** route map, PWA caching strategy, proxy design, forced
+   password-change flow, Data-Saver behavior, admin approval UI
+6. **Deployment guide, operations, and NDPA 2023 considerations** (consent,
+   retention, data minimization), plus a backup approach (scheduled logical dump to R2)
+
+Save Stage 1 output to `docs/DESIGN.md` (split into `docs/` files if large) before
+starting Stage 2, so the build has a durable source of truth.
+
+# 9. STAGE 2: BUILD (starts automatically after Stage 1)
+
+## 9.1 Environment and boundaries
+- Work in the available workspace using real file and shell tools.
+- You cannot create cloud accounts or deploy. Build and test **locally**:
+  Docker Compose with Postgres, and an S3-compatible local stand-in for R2
+  (for example MinIO). Brevo is replaced by an email adapter with a console/file
+  transport for dev and tests.
+- Anything needing human action (account creation, secrets, DNS-free setup clicks)
+  goes into `docs/DEPLOY.md` as exact steps. Never fake the result.
+
+## 9.2 Repo structure
+Monorepo, npm workspaces (or pnpm), roughly:
+- `apps/api` (backend), `apps/web` (Vite + React PWA), `functions/` (Pages
+  Functions proxy), `db/migrations`, `db/seed`, `docs/`, `.github/workflows`,
+  `docker-compose.yml`, `.env.example`, root `README.md`.
+
+## 9.3 Progress tracking (survives context limits)
+- Create `docs/BUILD_PLAN.md`: milestone checklist with status.
+- Create `docs/BUILD_LOG.md`: append a short entry after each milestone (what was
+  done, tests run, results, open issues).
+- At the start of every work session or after any context reset, re-read
+  `docs/DESIGN.md`, `BUILD_PLAN.md`, `BUILD_LOG.md`, and `DEVIATIONS.md` before
+  continuing.
+
+## 9.4 Milestones (in order; each ends with a gate)
+Build milestones in order and stop according to RUN SETTINGS. In `checkpoint` mode,
+milestones after CHECKPOINT_AFTER are listed in `docs/BUILD_PLAN.md` as
+"NOT STARTED (deferred by run settings)" and must not be partially implemented.
+
+1. **Scaffold:** monorepo, tooling, lint/format, Docker Compose, `.env.example`,
+   CI workflow (GitHub Actions free tier: lint + test + build). Gate: `docker
+   compose up` brings up the DB, and CI config validates.
+2. **Database:** migrations and seed (sample departments, sample courses clearly
+   labelled as fake, a bootstrap Registrar script). Gate: migrate up and down
+   cleanly on a fresh DB; seed runs.
+3. **Auth and permissions:** sessions/cookies, CSRF, rate limiting, lockout,
+   forced password change, password reset, role-scope middleware. Gate: tests for
+   every cell of the permission matrix and the lockout/rate-limit paths.
+4. **Onboarding:** CSV streaming importer (with error report and `import_jobs`),
+   self-registration, email verification, admissions matching, approval queue,
+   email adapter. Gate: importer tests (valid file, duplicates, bad rows, large
+   file streamed with bounded memory, BOM/encoding), approval-scope tests.
+5. **Content and storage:** courses, enrollments, resources, R2 presign (PUT, GET,
+   confirm), file-type/size enforcement, library provider + admin catalog CSV,
+   aggregator endpoints with caching, discussions. Gate: presigned-URL flow tests
+   against the local S3 stand-in, including expired URL, wrong user, oversized
+   file, missing object on confirm.
+6. **Frontend:** app shell, auth screens, forced password change, student dashboard,
+   course module tabs, Lite YouTube component, Data-Saver toggle, offline "Save for
+   offline" with quota indicator and logout cache clearing, admin approval UI,
+   importer UI, upload UI, server-waking-up handling. Gate: component and
+   integration tests pass; production build succeeds; PWA manifest and service
+   worker generated.
+7. **Hardening and docs:** security review pass (authz on every route, input
+   validation, headers, secrets scan), bundle-size check on the main route,
+   `docs/DEPLOY.md` (verified against current free-tier docs, dated),
+   `docs/OPERATIONS.md` (backups, monitoring, NDPA), `README.md`, and a "Known
+   limitations & upgrade path" section.
+
+## 9.5 Definition of done (per milestone)
+- Code compiles; lint passes; tests for that milestone exist and **pass when
+  actually run**; the result is recorded in `BUILD_LOG.md`.
+- Security-critical paths (auth, authorization, presigning, CSV parsing) have
+  tests, not just implementation.
+- Do not advance past a failing gate. Fix it, or log it as a blocker per 9.7.
+
+## 9.6 Quality bar
+- Authorization is enforced server-side on every route; the frontend only hides UI.
+- No plaintext passwords or tokens in logs. Validate all inputs. Use parameterized
+  queries only.
+- Keep backend memory low: streaming, bounded batches, no unbounded in-memory
+  caches. Report measured peak memory for the 10k-row import test if it can be
+  measured; otherwise state that it was not measured.
+- Keep the first-load bundle small; lazy-load admin and heavy views.
+
+## 9.7 When to stop and ask
+Do not stop for routine decisions; make the call, log it in `DEVIATIONS.md` or the
+Assumptions section, and continue. Stop and ask only for:
+- a required input that does not exist and cannot be mocked (for example a real
+  secret needed to run a test that cannot use the local stand-in),
+- a conflict between two "final" decisions in section 3,
+- a gate that stays failing after reasonable attempts (report what you tried),
+- the configured checkpoint has been reached (see 9.9).
+
+## 9.8 Final report (BUILD_SCOPE = full)
+End with a concise summary:
+- what was built and where (file map),
+- test results actually obtained (counts, anything skipped or failing),
+- what was NOT done or not verified,
+- the ordered list of manual steps to deploy (pointing to `docs/DEPLOY.md`),
+- known limitations and the upgrade path (for example, a future domain or library system).
+
+## 9.9 Checkpoint behavior (BUILD_SCOPE = checkpoint)
+
+When the gate for milestone CHECKPOINT_AFTER passes, stop. Do not begin the next
+milestone, even if budget remains. Before stopping:
+
+1. **Leave the repo in a runnable state.** `docker compose up`, migrations, seed,
+   lint, and the test suite must all work for the milestones completed so far.
+   No half-written files or stubs for later milestones outside the documented
+   interfaces.
+2. **Update `docs/BUILD_PLAN.md` and `docs/BUILD_LOG.md`** with final status of the
+   completed milestones and the deferred ones.
+3. **Write a checkpoint report** (replaces the 9.8 final report) containing:
+   - what was built and where (file map),
+   - test results actually obtained (counts, anything skipped or failing),
+   - anything not done or not verified,
+   - assumptions and entries in `docs/DEVIATIONS.md` that need the reviewer's decision,
+   - a **review checklist** for the human: how to start the stack locally, how to
+     exercise the importer with a sample CSV, how to log in as the bootstrap
+     Registrar, and which permission-matrix and security tests to read first,
+   - the list of remaining milestones with a rough size estimate for each.
+4. **End with the exact resume instruction:**
+   "To continue, reply `continue from milestone N`, or change CHECKPOINT_AFTER or
+   set BUILD_SCOPE to `full`."
+
+On resume, first re-read `docs/DESIGN.md`, `docs/BUILD_PLAN.md`, `docs/BUILD_LOG.md`,
+and `docs/DEVIATIONS.md`, and apply any review feedback the human gives before
+starting the next milestone. Do not redesign completed milestones unless the
+feedback asks for it; log any change in `DEVIATIONS.md`.

@@ -1,0 +1,25 @@
+{
+  "name": "fss-ib-elibrary-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-Cost E-Learning Portal & Digital Library for Federal School of Statistics, Ibadan",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace=@fss/api",
+    "db:rollback": "npm run db:rollback --workspace=@fss/api",
+    "db:seed": "npm run db:seed --workspace=@fss/api",
+    "db:bootstrap": "npm run db:bootstrap --workspace=@fss/api",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}
+

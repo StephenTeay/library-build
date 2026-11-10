@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fss_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fss_elibrary
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fss_elibrary"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  s3mock:
+    image: localstack/localstack:latest
+    container_name: fss_s3mock
+    restart: always
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - s3mock_data:/var/lib/localstack
+
+volumes:
+  postgres_data:
+  s3mock_data:
