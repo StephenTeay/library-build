@@ -53,7 +53,10 @@ onboardingRouter.post(
 
       res.status(200).json({
         message: 'CSV import processed',
-        summary,
+        summary: {
+          ...summary,
+          errorLogJson: summary.errors,
+        },
       });
     } catch (err: any) {
       console.error('[ImportCsv] Error:', err);
@@ -89,12 +92,21 @@ onboardingRouter.post('/register', async (req: Request, res: Response) => {
     password,
     full_name,
     department_id,
+    department_code,
     programme,
     level,
     entry_session,
   } = req.body || {};
 
-  if (!matric_no || !email || !password || !full_name || !department_id || !programme || !level) {
+  let resolvedDeptId = department_id ? Number(department_id) : null;
+  if (!resolvedDeptId && department_code) {
+    const deptRes = await pool.query('SELECT id FROM departments WHERE code = $1', [String(department_code).toUpperCase().trim()]);
+    if (deptRes.rows.length > 0) {
+      resolvedDeptId = deptRes.rows[0].id;
+    }
+  }
+
+  if (!matric_no || !email || !password || !full_name || !resolvedDeptId || !programme || !level) {
     res.status(400).json({ error: 'Bad Request', message: 'All required registration fields must be provided.' });
     return;
   }
@@ -105,7 +117,7 @@ onboardingRouter.post('/register', async (req: Request, res: Response) => {
       email,
       password,
       full_name,
-      department_id: Number(department_id),
+      department_id: resolvedDeptId,
       programme,
       level: Number(level),
       entry_session: entry_session || '2025/2026',
@@ -146,15 +158,16 @@ onboardingRouter.get('/verify-email', async (req: Request, res: Response) => {
 onboardingRouter.get(
   '/queue',
   authenticate,
-  requireRole('REGISTRAR', 'HOD', 'LEVEL_COORDINATOR'),
+  requireRole('REGISTRAR', 'LIBRARIAN', 'HOD', 'LEVEL_COORDINATOR'),
   async (req: Request, res: Response) => {
     const filterDept = req.query.department_id ? Number(req.query.department_id) : undefined;
     const filterLvl = req.query.level ? Number(req.query.level) : undefined;
     const matchedOnly = req.query.matched_only === 'true';
+    const verifiedOnly = req.query.verified_only === 'true';
 
     try {
-      const queue = await getPendingApprovalQueue(req.user!, filterDept, filterLvl, matchedOnly);
-      res.status(200).json({ queue, count: queue.length });
+      const queue = await getPendingApprovalQueue(req.user!, filterDept, filterLvl, matchedOnly, verifiedOnly);
+      res.status(200).json({ queue, students: queue, count: queue.length });
     } catch (err: any) {
       res.status(500).json({ error: 'Internal Error', message: err.message });
     }
@@ -162,25 +175,28 @@ onboardingRouter.get(
 );
 
 // --------------------------------------------------------------------------
-// 6. Batch Approval
+// 6. Batch Approval / Rejection
 // --------------------------------------------------------------------------
 onboardingRouter.post(
   '/approve',
   authenticate,
-  requireRole('REGISTRAR', 'HOD', 'LEVEL_COORDINATOR'),
+  requireRole('REGISTRAR', 'LIBRARIAN', 'HOD', 'LEVEL_COORDINATOR'),
   async (req: Request, res: Response) => {
-    const { user_ids } = req.body || {};
-    if (!Array.isArray(user_ids) || user_ids.length === 0) {
-      res.status(400).json({ error: 'Bad Request', message: 'user_ids array is required' });
+    const targetIds = req.body.user_ids || req.body.student_ids || [];
+    const action = req.body.action === 'REJECT' ? 'REJECT' : 'APPROVE';
+
+    if (!Array.isArray(targetIds) || targetIds.length === 0) {
+      res.status(400).json({ error: 'Bad Request', message: 'user_ids or student_ids array is required' });
       return;
     }
 
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const result = await batchApproveStudents(req.user!, user_ids, ip);
+    const result = await batchApproveStudents(req.user!, targetIds, ip, action);
 
     res.status(200).json({
-      message: `Approved ${result.approvedCount} student(s)`,
+      message: `${action === 'REJECT' ? 'Rejected' : 'Approved'} ${result.approvedCount} student(s)`,
       approvedCount: result.approvedCount,
+      approved_count: result.approvedCount,
       errors: result.errors,
     });
   }

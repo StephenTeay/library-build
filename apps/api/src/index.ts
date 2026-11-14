@@ -4,6 +4,12 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { authRouter } from './modules/auth/authRoutes.js';
 import { onboardingRouter } from './modules/onboarding/onboardingRoutes.js';
+import { resourceRouter } from './modules/resources/resourceRoutes.js';
+import { libraryRouter } from './modules/library/libraryRoutes.js';
+import { aggregatorRouter } from './modules/aggregator/aggregatorRoutes.js';
+import { discussionRouter } from './modules/discussions/discussionRoutes.js';
+import { courseRouter } from './modules/courses/courseRoutes.js';
+import { staffRouter } from './modules/staff/staffRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import {
   requireRole,
@@ -35,6 +41,24 @@ app.use('/api/auth', authRouter);
 
 // Onboarding & Importer Routes
 app.use('/api/onboarding', onboardingRouter);
+
+// Course Management & Enrollment Routes
+app.use('/api/courses', courseRouter);
+
+// Learning Resources & S3/R2 Storage Routes
+app.use('/api/resources', resourceRouter);
+
+// Library Catalog Provider Routes
+app.use('/api/library', libraryRouter);
+
+// Open Resource Aggregator Routes
+app.use('/api/aggregator', aggregatorRouter);
+
+// Course Discussion Forum Routes
+app.use('/api/discussions', discussionRouter);
+
+// Staff Management Routes (Librarian / Super Admin)
+app.use('/api/staff', staffRouter);
 
 // --------------------------------------------------------------------------
 // Permission Matrix Testing Endpoints (Enforces Role-Scope Middleware)

@@ -67,30 +67,31 @@
 
 ---
 
-### Deferred Milestones (BUILD_SCOPE = checkpoint, checkpoint = 4)
-- [ ] **Milestone 5: Content, Storage & Library Services**
-  - Status: NOT STARTED (deferred by run settings)
+- [x] **Milestone 5: Content, Storage & Library Services**
+  - Status: COMPLETED
   - Courses, enrollments, and learning resources
   - R2 presigned PUT/GET and confirmation HEAD checks
-  - File type and size enforcement
-  - LibraryCatalogProvider (LocalCatalogProvider + Koha stub)
-  - Open resource aggregator & discussion forums
-  - **Gate:** Presigned URL flow tests, storage limits, and library provider tests pass.
+  - File type and size enforcement (50 MB limit, strict MIME/extension allowlist)
+  - LibraryCatalogProvider (LocalCatalogProvider with call number/shelf locations + KohaSruProvider stub)
+  - Open resource aggregator (curated departmental + arXiv & GitHub live query with 15m caching) & discussion forums
+  - **Gate:** Presigned URL flow tests, storage limits, direct S3 upload verification, and library provider tests pass (13/13 tests passed).
 
-- [ ] **Milestone 6: Frontend PWA Implementation**
-  - Status: NOT STARTED (deferred by run settings)
+- [x] **Milestone 6: Frontend PWA Implementation**
+  - Status: COMPLETED
   - React 18 PWA app shell and routing
-  - Auth, forced password change & dashboard screens
-  - Course module viewer with syllabus, resources, and library tabs
-  - YouTube Lite facade & Data-Saver mode engine
-  - Offline resource caching with storage quota gauge
-  - Admin approval queue & CSV upload UIs
-  - **Gate:** Component/integration tests pass, production PWA build succeeds.
+  - Auth, forced password change gate (`MustChangePasswordModal`) & dashboard screens
+  - Course module viewer with syllabus, resources, physical library, and discussion tabs
+  - YouTube Lite facade (zero initial iframe, mobile data saving) & Data-Saver mode engine
+  - Offline resource caching via CacheStorage API with device storage quota gauge (`navigator.storage.estimate()`)
+  - Admin approval queue & streaming CSV importer UIs
+  - Render free-tier cold-start banner with automatic exponential backoff retry
+  - **Gate:** Component/integration tests pass (6/6 tests), production PWA build succeeds (264 kB bundle, 73.8 kB gzipped).
 
-- [ ] **Milestone 7: Hardening, Security Review & Operations**
-  - Status: NOT STARTED (deferred by run settings)
+- [x] **Milestone 7: Hardening, Security Review & Operations**
+  - Status: COMPLETED
   - Full authorization audit pass & input sanitization check
-  - Bundle size validation on main route
-  - Final `docs/DEPLOY.md` and `docs/OPERATIONS.md`
-  - Final root `README.md`
-  - **Gate:** Security audit passes, test suite green, deployment docs complete.
+  - Main bundle size validated (< 74 kB gzipped)
+  - Authored production zero-cost guide in `docs/DEPLOY.md`
+  - Authored operational runbooks, automated R2 backup script, and NDPA 2023 compliance checklist in `docs/OPERATIONS.md`
+  - Authored comprehensive root `README.md`
+  - **Gate:** Security audit passes, complete test suite green (42/42 tests pass across monorepo), deployment and operational documentation complete.

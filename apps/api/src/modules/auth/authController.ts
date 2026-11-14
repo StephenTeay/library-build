@@ -144,13 +144,17 @@ export async function login(req: Request, res: Response): Promise<void> {
     user: {
       id: user.id,
       email: user.email,
+      matric_no: user.matric_no,
       matricNo: user.matric_no,
+      full_name: user.full_name,
       fullName: user.full_name,
       role: user.role,
+      department_id: user.department_id,
       departmentId: user.department_id,
       programme: user.programme,
       level: user.level,
-      mustChangePassword: user.must_change_password,
+      must_change_password: Boolean(user.must_change_password),
+      mustChangePassword: Boolean(user.must_change_password),
     },
   });
 }

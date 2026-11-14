@@ -10,7 +10,7 @@ export interface TokenUserPayload {
   userId: string;
   email: string;
   matricNo: string | null;
-  role: 'REGISTRAR' | 'HOD' | 'LEVEL_COORDINATOR' | 'LECTURER' | 'STUDENT';
+  role: 'LIBRARIAN' | 'REGISTRAR' | 'LIBRARY_STAFF' | 'HOD' | 'LEVEL_COORDINATOR' | 'LECTURER' | 'STUDENT';
   departmentId: number | null;
   programme: 'ND' | 'HND' | null;
   level: number | null;

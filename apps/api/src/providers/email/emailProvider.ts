@@ -5,6 +5,7 @@ export interface IEmailProvider {
   sendVerificationEmail(toEmail: string, studentName: string, token: string): Promise<void>;
   sendApprovalNotice(toEmail: string, studentName: string): Promise<void>;
   sendPasswordResetEmail(toEmail: string, studentName: string, token: string): Promise<void>;
+  sendStaffWelcomeEmail(toEmail: string, staffName: string, role: string, tempPass: string): Promise<void>;
 }
 
 export class ConsoleEmailProvider implements IEmailProvider {
@@ -47,6 +48,15 @@ export class ConsoleEmailProvider implements IEmailProvider {
       toEmail,
       'Reset Your FSS-IB Portal Password',
       `Dear ${studentName},\n\nA password reset request was received for your account. Click the link below to reset your password:\n${link}\n\nIf you did not request this, please ignore this email.`
+    );
+  }
+
+  async sendStaffWelcomeEmail(toEmail: string, staffName: string, role: string, tempPass: string): Promise<void> {
+    const loginLink = `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/login`;
+    this.logEmail(
+      toEmail,
+      `Welcome to FSS-IB Portal - Staff Account (${role})`,
+      `Dear ${staffName},\n\nYou have been registered as a member of staff (${role}) on the FSS-IB Portal.\n\nLogin URL: ${loginLink}\nEmail: ${toEmail}\nTemporary Password: ${tempPass}\n\nYou will be required to change your password upon your first sign in.`
     );
   }
 }
@@ -115,6 +125,15 @@ export class BrevoEmailProvider implements IEmailProvider {
       toEmail,
       'Reset Your FSS-IB Portal Password',
       `<p>Dear ${studentName},</p><p>Please <a href="${link}">click here to reset your password</a>. This link expires in 1 hour.</p>`
+    );
+  }
+
+  async sendStaffWelcomeEmail(toEmail: string, staffName: string, role: string, tempPass: string): Promise<void> {
+    const loginLink = `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/login`;
+    await this.sendBrevoMail(
+      toEmail,
+      `Welcome to FSS-IB Portal - Staff Account (${role})`,
+      `<p>Dear ${staffName},</p><p>You have been registered as a member of staff (<strong>${role}</strong>) on the FSS-IB Portal.</p><p>Login at: <a href="${loginLink}">${loginLink}</a><br>Email: <strong>${toEmail}</strong><br>Temporary Password: <code>${tempPass}</code></p><p>You will be required to change your password immediately upon your first sign in.</p>`
     );
   }
 }

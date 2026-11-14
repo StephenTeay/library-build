@@ -5,9 +5,9 @@ import { hashPassword } from '../modules/auth/password.js';
 dotenv.config();
 
 export async function bootstrapRegistrar(): Promise<void> {
-  const email = (process.env.BOOTSTRAP_REGISTRAR_EMAIL || 'registrar@fss-ibadan.edu.ng').toLowerCase().trim();
-  const password = process.env.BOOTSTRAP_REGISTRAR_PASSWORD || 'ChangeMeRegistrar2026!';
-  const fullName = process.env.BOOTSTRAP_REGISTRAR_NAME || 'Registrar FSS-IB';
+  const email = (process.env.BOOTSTRAP_REGISTRAR_EMAIL || 'librarian@fss.ng').toLowerCase().trim();
+  const password = process.env.BOOTSTRAP_REGISTRAR_PASSWORD || 'AdminPass123!';
+  const fullName = process.env.BOOTSTRAP_REGISTRAR_NAME || 'Chief Librarian FSS-IB';
 
   const client = await pool.connect();
   try {
@@ -16,7 +16,7 @@ export async function bootstrapRegistrar(): Promise<void> {
     const existing = await client.query('SELECT id, role, status FROM users WHERE email = $1', [email]);
 
     if (existing.rows.length === 0) {
-      console.log('[Bootstrap] Creating initial bootstrap Registrar account...');
+      console.log('[Bootstrap] Creating initial bootstrap Librarian account...');
       const passwordHash = await hashPassword(password);
 
       const res = await client.query(
@@ -29,14 +29,19 @@ export async function bootstrapRegistrar(): Promise<void> {
           must_change_password,
           matched_verified,
           email_verified_at
-        ) VALUES ($1, $2, $3, 'REGISTRAR', 'ACTIVE', TRUE, TRUE, NOW())
+        ) VALUES ($1, $2, $3, 'LIBRARIAN', 'ACTIVE', FALSE, TRUE, NOW())
         RETURNING id, email, role, status;`,
         [email, passwordHash, fullName]
       );
 
-      console.log('[Bootstrap] Successfully bootstrapped Registrar user:', res.rows[0]);
+      console.log('[Bootstrap] Successfully bootstrapped Librarian user:', res.rows[0]);
     } else {
-      console.log(`[Bootstrap] Registrar user already exists with ID: ${existing.rows[0].id} (Role: ${existing.rows[0].role})`);
+      // Ensure super-admin role is updated to LIBRARIAN
+      if (existing.rows[0].role === 'REGISTRAR') {
+        await client.query("UPDATE users SET role = 'LIBRARIAN' WHERE id = $1", [existing.rows[0].id]);
+        console.log(`[Bootstrap] Upgraded existing user role to LIBRARIAN`);
+      }
+      console.log(`[Bootstrap] Super admin user already exists with ID: ${existing.rows[0].id} (Role: ${existing.rows[0].role})`);
     }
   } finally {
     client.release();

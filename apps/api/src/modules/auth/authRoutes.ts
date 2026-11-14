@@ -18,6 +18,7 @@ authRouter.post('/login', loginRateLimiter, login);
 authRouter.post('/refresh', refresh);
 authRouter.post('/logout', logout);
 authRouter.post('/request-reset', requestPasswordReset);
+authRouter.post('/forgot-password', requestPasswordReset);
 authRouter.post('/reset-password', resetPassword);
 
 // Authenticated routes

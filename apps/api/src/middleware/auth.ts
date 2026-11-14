@@ -28,8 +28,18 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
     // Enforce forced password-change gate
     if (payload.mustChangePassword) {
-      const allowedPaths = ['/api/auth/change-password', '/api/auth/logout', '/api/auth/me'];
-      const isAllowed = allowedPaths.some(p => req.path === p || req.originalUrl === p);
+      const cleanUrl = (req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
+      const isAllowed =
+        cleanUrl === '/api/auth/change-password' ||
+        cleanUrl === '/api/auth/logout' ||
+        cleanUrl === '/api/auth/me' ||
+        cleanUrl === '/auth/change-password' ||
+        cleanUrl === '/auth/logout' ||
+        cleanUrl === '/auth/me' ||
+        req.path === '/change-password' ||
+        req.path === '/logout' ||
+        req.path === '/me';
+
       if (!isAllowed) {
         res.status(403).json({
           error: 'Password Change Required',

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../db/pool.js';
 
-export type UserRole = 'REGISTRAR' | 'HOD' | 'LEVEL_COORDINATOR' | 'LECTURER' | 'STUDENT';
+export type UserRole = 'LIBRARIAN' | 'REGISTRAR' | 'LIBRARY_STAFF' | 'HOD' | 'LEVEL_COORDINATOR' | 'LECTURER' | 'STUDENT';
 
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -10,7 +10,12 @@ export function requireRole(...roles: UserRole[]) {
       return;
     }
 
-    if (!roles.includes(req.user.role)) {
+    // Treat LIBRARIAN and REGISTRAR interchangeably as super-admin roles
+    const effectiveRoles = new Set<UserRole>(roles);
+    if (effectiveRoles.has('REGISTRAR')) effectiveRoles.add('LIBRARIAN');
+    if (effectiveRoles.has('LIBRARIAN')) effectiveRoles.add('REGISTRAR');
+
+    if (!effectiveRoles.has(req.user.role)) {
       res.status(403).json({
         error: 'Forbidden',
         message: `Insufficient role privileges. Required: [${roles.join(', ')}], Current: ${req.user.role}`,
@@ -29,8 +34,8 @@ export function requireDepartmentScope(deptParamName = 'department_id') {
       return;
     }
 
-    // REGISTRAR has global department access
-    if (req.user.role === 'REGISTRAR') {
+    // LIBRARIAN & REGISTRAR have global department access
+    if (req.user.role === 'LIBRARIAN' || req.user.role === 'REGISTRAR') {
       return next();
     }
 
@@ -60,8 +65,8 @@ export function requireLevelScope() {
       return;
     }
 
-    // REGISTRAR and HOD have cross-level department access
-    if (req.user.role === 'REGISTRAR' || req.user.role === 'HOD') {
+    // LIBRARIAN, REGISTRAR and HOD have cross-level department access
+    if (req.user.role === 'LIBRARIAN' || req.user.role === 'REGISTRAR' || req.user.role === 'HOD') {
       return next();
     }
 
@@ -81,7 +86,7 @@ export function requireLevelScope() {
 }
 
 export async function canManageCourse(userId: string, role: UserRole, userDeptId: number | null, courseId: number): Promise<boolean> {
-  if (role === 'REGISTRAR') return true;
+  if (role === 'LIBRARIAN' || role === 'REGISTRAR') return true;
 
   const courseRes = await pool.query('SELECT department_id FROM courses WHERE id = $1', [courseId]);
   if (courseRes.rows.length === 0) return false;
@@ -103,7 +108,7 @@ export async function canManageCourse(userId: string, role: UserRole, userDeptId
 }
 
 export async function canAccessCourseContent(userId: string, role: UserRole, userDeptId: number | null, courseId: number): Promise<boolean> {
-  if (role === 'REGISTRAR') return true;
+  if (role === 'LIBRARIAN' || role === 'REGISTRAR') return true;
 
   if (role === 'HOD' || role === 'LEVEL_COORDINATOR') {
     const courseRes = await pool.query('SELECT department_id FROM courses WHERE id = $1', [courseId]);

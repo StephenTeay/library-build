@@ -18,17 +18,14 @@ services:
       retries: 5
 
   s3mock:
-    image: localstack/localstack:latest
+    image: adobe/s3mock:latest
     container_name: fss_s3mock
     restart: always
     environment:
-      - SERVICES=s3
-      - AWS_DEFAULT_REGION=us-east-1
+      - initialBuckets=fss-elibrary-storage
     ports:
-      - "4566:4566"
-    volumes:
-      - s3mock_data:/var/lib/localstack
+      - "9090:9090"
+      - "9191:9191"
 
 volumes:
   postgres_data:
-  s3mock_data:

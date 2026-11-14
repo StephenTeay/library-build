@@ -134,7 +134,8 @@ export async function getPendingApprovalQueue(
   actor: TokenUserPayload,
   filterDeptId?: number,
   filterLevel?: number,
-  matchedOnly?: boolean
+  matchedOnly?: boolean,
+  verifiedOnly?: boolean
 ) {
   let queryText = `
     SELECT u.id, u.matric_no, u.email, u.full_name, u.department_id,
@@ -144,9 +145,12 @@ export async function getPendingApprovalQueue(
     FROM users u
     JOIN departments d ON u.department_id = d.id
     WHERE u.status = 'PENDING'
-      AND u.email_verified_at IS NOT NULL
   `;
   const params: any[] = [];
+
+  if (verifiedOnly) {
+    queryText += ' AND u.email_verified_at IS NOT NULL';
+  }
 
   // Role Scope Enforcements
   if (actor.role === 'HOD') {
@@ -157,7 +161,7 @@ export async function getPendingApprovalQueue(
     queryText += ` AND u.department_id = $${params.length}`;
     params.push(actor.level);
     queryText += ` AND u.level = $${params.length}`;
-  } else if (actor.role === 'REGISTRAR') {
+  } else if (actor.role === 'REGISTRAR' || actor.role === 'LIBRARIAN') {
     if (filterDeptId) {
       params.push(filterDeptId);
       queryText += ` AND u.department_id = $${params.length}`;
@@ -182,7 +186,8 @@ export async function getPendingApprovalQueue(
 export async function batchApproveStudents(
   actor: TokenUserPayload,
   userIds: string[],
-  ip: string
+  ip: string,
+  action: 'APPROVE' | 'REJECT' = 'APPROVE'
 ): Promise<{ approvedCount: number; errors: string[] }> {
   if (!userIds || userIds.length === 0) {
     return { approvedCount: 0, errors: [] };
@@ -221,8 +226,24 @@ export async function batchApproveStudents(
 
       await client.query('BEGIN');
 
-      // 2. Update status to ACTIVE
-      await client.query("UPDATE users SET status = 'ACTIVE', updated_at = NOW() WHERE id = $1", [id]);
+      if (action === 'REJECT') {
+        // 2. Reject: update status to SUSPENDED
+        await client.query("UPDATE users SET status = 'SUSPENDED', updated_at = NOW() WHERE id = $1", [id]);
+
+        // Log rejection in audit_logs
+        await client.query(
+          `INSERT INTO audit_logs (user_id, action, target_type, target_id, ip_address, details_json)
+           VALUES ($1, 'STUDENT_REJECTED', 'USER', $2, $3, $4);`,
+          [actor.userId, String(id), ip, JSON.stringify({ rejected_by_role: actor.role })]
+        );
+
+        await client.query('COMMIT');
+        approvedCount++;
+        continue;
+      }
+
+      // 2. Update status to ACTIVE and ensure email is marked verified
+      await client.query("UPDATE users SET status = 'ACTIVE', email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = $1", [id]);
 
       // 3. Auto-enroll in matching courses
       await client.query(
