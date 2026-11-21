@@ -87,12 +87,54 @@ This guide details the complete deployment process for the Federal School of Sta
 
 ---
 
-## Step 3: Transactional Email Setup (Brevo)
+## Step 3: Transactional Email Setup (Choose ONE Option)
 
+You can choose whichever email delivery method is easiest for you:
+
+### Option A: Gmail with App Password (Easiest & Free)
+This works with any personal or institutional `@gmail.com` account and requires no DNS records or domain verification.
+
+1. Go to your Google Account security settings: [myaccount.google.com/security](https://myaccount.google.com/security).
+2. Ensure **2-Step Verification** is turned **ON**.
+3. Go directly to **App Passwords**: [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+   *(If prompted, enter your Google password)*.
+4. Enter an App Name (e.g. `FSS Portal`) and click **Create**.
+5. Copy the generated **16-character password** (e.g., `abcd efgh ijkl mnop`).
+6. Your environment variables on Render will be:
+   - `EMAIL_PROVIDER`: `gmail`
+   - `GMAIL_USER`: `yourname@gmail.com`
+   - `GMAIL_APP_PASSWORD`: `abcd efgh ijkl mnop` (spaces are automatically ignored)
+   - `EMAIL_SENDER_NAME`: `FSS-IB E-Library`
+
+---
+
+### Option B: Resend (Modern Free API - 3,000 emails/month)
+1. Sign up at [resend.com](https://resend.com).
+2. Go to **API Keys** > **Create API Key**.
+3. For testing without your own custom domain, Resend allows sending test emails from `onboarding@resend.dev` to your registered email address.
+4. Your environment variables on Render will be:
+   - `EMAIL_PROVIDER`: `resend`
+   - `RESEND_API_KEY`: `re_...`
+   - `EMAIL_FROM`: `onboarding@resend.dev` (or your verified domain address)
+
+---
+
+### Option C: Console Mode (Zero Setup - Direct Render Logs)
+If you just want to deploy and test the platform immediately without configuring any email provider:
+1. Set:
+   - `EMAIL_PROVIDER`: `console`
+2. Whenever a student registers, requests a password reset, or an admin creates staff, the full verification link, password reset link, and temporary password are printed directly in real time in the **Render Service Logs** (`[EMAIL-DISPATCH]`)!
+3. You can copy the link straight from the Render dashboard log tab to test the flows.
+
+---
+
+### Option D: Brevo (Formerly Sendinblue)
 1. Sign up at [brevo.com](https://www.brevo.com).
-2. Navigate to **SMTP & API > API Keys**.
-3. Generate an API Key (e.g. `xkeysib-...`).
-4. Set Sender Name to `FSS-IB Portal` and Sender Email to your verified institutional address (e.g. `portal@fss.ng` or administrative Gmail).
+2. Navigate to **SMTP & API > API Keys** and generate a key (`xkeysib-...`).
+3. Set:
+   - `EMAIL_PROVIDER`: `brevo`
+   - `BREVO_API_KEY`: `xkeysib-...`
+   - `EMAIL_FROM`: `your_verified_sender@domain.com`
 
 ---
 
@@ -125,9 +167,11 @@ This guide details the complete deployment process for the Federal School of Sta
    | `R2_ACCESS_KEY_ID` | `<Key_Id>` | Cloudflare R2 token key |
    | `R2_SECRET_ACCESS_KEY` | `<Secret_Key>` | Cloudflare R2 secret key |
    | `R2_S3_FORCE_PATH_STYLE`| `false` | Required for Cloudflare R2 virtual-hosted routing |
-   | `BREVO_API_KEY` | `xkeysib-...` | Brevo API key for emails |
+   | `EMAIL_PROVIDER` | `gmail` (or `console`, `resend`, `brevo`) | Email provider strategy |
+   | `GMAIL_USER` | `your_email@gmail.com` | If using Gmail App Password |
+   | `GMAIL_APP_PASSWORD` | `16-char-app-password` | If using Gmail App Password |
    | `EMAIL_SENDER_NAME` | `FSS-IB Portal` | Email sender name |
-   | `EMAIL_SENDER_ADDRESS` | `portal@fss.ng` | Email sender address |
+   | `EMAIL_SENDER_ADDRESS` | `your_email@gmail.com` | Email sender address |
    | `CORS_ORIGIN` | `https://fss-elibrary.pages.dev` | Frontend Cloudflare Pages domain |
 
 4. **Deploy Service:**
