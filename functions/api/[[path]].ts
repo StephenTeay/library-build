@@ -12,6 +12,7 @@
 
 interface Env {
   BACKEND_ORIGIN?: string;
+  BACKEND_URL?: string;
 }
 
 export async function onRequest(context: {
@@ -19,7 +20,7 @@ export async function onRequest(context: {
   env: Env;
 }): Promise<Response> {
   const url = new URL(context.request.url);
-  const targetOrigin = context.env.BACKEND_ORIGIN || "https://fss-backend.onrender.com";
+  const targetOrigin = context.env.BACKEND_ORIGIN || context.env.BACKEND_URL || "https://fss-backend.onrender.com";
 
   // Build target URL preserving the pathname and search query
   const targetUrl = new URL(url.pathname + url.search, targetOrigin);
