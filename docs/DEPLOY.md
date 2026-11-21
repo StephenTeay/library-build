@@ -149,7 +149,7 @@ If you just want to deploy and test the platform immediately without configuring
    - **Branch:** `main`
    - **Root Directory:** Leave empty (monorepo root)
    - **Runtime:** `Node`
-   - **Build Command:** `npm install && npm run build --workspace=@fss/api`
+   - **Build Command:** `npm install --include=dev && npm run build --workspace=@fss/api`
    - **Start Command:** `node apps/api/dist/index.js`
    - **Instance Type:** `Free` (0.1 CPU, 512 MB RAM)
 3. **Environment Variables:**
