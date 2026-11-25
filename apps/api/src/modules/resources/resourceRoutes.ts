@@ -4,6 +4,9 @@ import {
   confirmUpload,
   createExternalResource,
   downloadResource,
+  watermarkDownloadResource,
+  streamResource,
+  viewResource,
   getCourseResources,
   deleteResource,
 } from './resourceController.js';
@@ -28,6 +31,14 @@ resourceRouter.post(
   confirmUpload
 );
 
+// Alias to support /confirm-upload
+resourceRouter.post(
+  '/confirm-upload',
+  authenticate,
+  requireRole('REGISTRAR', 'HOD', 'LECTURER'),
+  confirmUpload
+);
+
 // Publish external resource (YouTube, Colab, GitHub, NBS portal)
 resourceRouter.post(
   '/external',
@@ -35,6 +46,15 @@ resourceRouter.post(
   requireRole('REGISTRAR', 'HOD', 'LECTURER'),
   createExternalResource
 );
+
+// View resource metadata and inline viewer URL
+resourceRouter.get('/:id/view', authenticate, viewResource);
+
+// HTTP Byte-Range Stream resource directly (PDF, audio, video, documents)
+resourceRouter.get('/:id/stream', authenticate, streamResource);
+
+// Watermarked PDF download (stamped with student name and matric)
+resourceRouter.get('/:id/watermark-download', authenticate, watermarkDownloadResource);
 
 // Download resource (Enforces course enrollment / staff assignment, returns short-lived presigned GET)
 resourceRouter.get('/:id/download', authenticate, downloadResource);

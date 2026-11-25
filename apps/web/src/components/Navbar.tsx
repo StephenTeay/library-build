@@ -124,8 +124,38 @@ export const Navbar: React.FC = () => {
                 fontWeight: 500,
               }}
             >
-              Open Resources
+              Research & Books
             </Link>
+
+            <Link
+              to="/repository"
+              style={{
+                color: '#f0fdfa',
+                textDecoration: 'none',
+                padding: '0.375rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              Theses & Projects
+            </Link>
+
+            {isStaff && (
+              <Link
+                to="/admin/students"
+                style={{
+                  color: '#fef08a',
+                  textDecoration: 'none',
+                  padding: '0.375rem 0.75rem',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                }}
+              >
+                Students
+              </Link>
+            )}
 
             {isStaff && (
               <Link

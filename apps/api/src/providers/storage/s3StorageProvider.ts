@@ -72,6 +72,14 @@ export class S3StorageProvider {
     }
   }
 
+  private isBucketMissing(err: any): boolean {
+    return (
+      err.name === 'NoSuchBucket' ||
+      err.Code === 'NoSuchBucket' ||
+      (err.$metadata?.httpStatusCode === 404 && typeof err.message === 'string' && err.message.toLowerCase().includes('bucket'))
+    );
+  }
+
   isFileTypeAllowed(filename: string): boolean {
     const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
     return ALLOWED_EXTENSIONS.has(ext);
@@ -100,15 +108,61 @@ export class S3StorageProvider {
   async createPresignedGet(
     key: string,
     originalFilename?: string,
-    expiresIn = 900
+    expiresIn = 900,
+    inline = false
   ): Promise<string> {
+    const disposition = inline
+      ? (originalFilename ? `inline; filename="${originalFilename}"` : 'inline')
+      : (originalFilename ? `attachment; filename="${originalFilename}"` : undefined);
+
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: key,
-      ResponseContentDisposition: originalFilename ? `attachment; filename="${originalFilename}"` : undefined,
+      ResponseContentDisposition: disposition,
     });
 
     return getSignedUrl(this.client, command, { expiresIn });
+  }
+
+  async getObjectStream(
+    key: string,
+    range?: string
+  ): Promise<{
+    stream: any;
+    contentLength?: number;
+    contentType?: string;
+    contentRange?: string;
+    statusCode: number;
+  }> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      Range: range,
+    });
+
+    try {
+      const response = await this.client.send(command);
+      return {
+        stream: response.Body,
+        contentLength: response.ContentLength,
+        contentType: response.ContentType,
+        contentRange: response.ContentRange,
+        statusCode: range && response.ContentRange ? 206 : 200,
+      };
+    } catch (err: any) {
+      if (this.isBucketMissing(err)) {
+        await this.ensureBucketExists();
+        const retryRes = await this.client.send(command);
+        return {
+          stream: retryRes.Body,
+          contentLength: retryRes.ContentLength,
+          contentType: retryRes.ContentType,
+          contentRange: retryRes.ContentRange,
+          statusCode: range && retryRes.ContentRange ? 206 : 200,
+        };
+      }
+      throw err;
+    }
   }
 
   async verifyObjectExists(key: string): Promise<StorageHeadResult> {
@@ -148,7 +202,16 @@ export class S3StorageProvider {
       Body: body,
       ContentType: mimeType,
     });
-    await this.client.send(command);
+    try {
+      await this.client.send(command);
+    } catch (err: any) {
+      if (this.isBucketMissing(err)) {
+        await this.ensureBucketExists();
+        await this.client.send(command);
+        return;
+      }
+      throw err;
+    }
   }
 }
 

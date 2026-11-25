@@ -1,4 +1,5 @@
 import { pool } from './pool.js';
+import { seedCoursesAndResources } from './seedCoursesAndResources.js';
 
 export async function seedDatabase(): Promise<void> {
   const client = await pool.connect();
@@ -104,7 +105,10 @@ export async function seedDatabase(): Promise<void> {
     }
 
     await client.query('COMMIT');
-    console.log('[Seed] Database seed completed successfully.');
+    console.log('[Seed] Database base seed completed successfully.');
+
+    // Seed comprehensive departmental courses and verified open resources
+    await seedCoursesAndResources();
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[Seed] Database seed failed:', err);

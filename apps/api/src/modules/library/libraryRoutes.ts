@@ -120,6 +120,64 @@ libraryRouter.post(
   }
 );
 
+// 6. Update single catalog item (Librarian, Registrar, or Library Staff)
+libraryRouter.put(
+  '/items/:id',
+  authenticate,
+  requireRole('LIBRARIAN', 'REGISTRAR', 'LIBRARY_STAFF'),
+  async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const { title, author, isbn, call_number, shelf_location, copies_total, copies_available, department_id } = req.body || {};
+
+    try {
+      const provider = getLibraryCatalogProvider();
+      const updated = await provider.updateItem(id, {
+        title,
+        author,
+        isbn,
+        call_number,
+        shelf_location,
+        copies_total,
+        copies_available,
+        department_id,
+      });
+
+      if (!updated) {
+        res.status(404).json({ error: 'Not Found', message: 'Library item not found.' });
+        return;
+      }
+
+      res.status(200).json({ message: 'Book updated successfully.', item: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Library Error', message: err.message });
+    }
+  }
+);
+
+// 7. Delete single catalog item (Librarian, Registrar, or Library Staff)
+libraryRouter.delete(
+  '/items/:id',
+  authenticate,
+  requireRole('LIBRARIAN', 'REGISTRAR', 'LIBRARY_STAFF'),
+  async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+
+    try {
+      const provider = getLibraryCatalogProvider();
+      const result = await provider.deleteItem(id);
+
+      if (!result.success) {
+        res.status(400).json({ error: 'Bad Request', message: result.message || 'Cannot delete book.' });
+        return;
+      }
+
+      res.status(200).json({ message: 'Book deleted from catalog successfully.' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Library Error', message: err.message });
+    }
+  }
+);
+
 // 6. Bulk CSV Catalog Import (Librarian, Registrar, or Library Staff)
 libraryRouter.post(
   '/import-csv',

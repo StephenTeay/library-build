@@ -86,7 +86,7 @@ export const ResourceUploadModal: React.FC<ResourceUploadModalProps> = ({
         }
 
         setProgressText('Registering resource metadata...');
-        await api.post('/resources/confirm-upload', {
+        await api.post('/resources/confirm', {
           course_id: courseId,
           title: title.trim(),
           description: description.trim() || null,

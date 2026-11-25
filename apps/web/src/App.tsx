@@ -15,9 +15,11 @@ import { Dashboard } from './pages/Dashboard';
 import { CourseView } from './pages/CourseView';
 import { PhysicalLibrary } from './pages/PhysicalLibrary';
 import { OpenResources } from './pages/OpenResources';
+import { InstitutionalRepository } from './pages/InstitutionalRepository';
 import { ApprovalQueue } from './pages/ApprovalQueue';
 import { CsvImport } from './pages/CsvImport';
 import { StaffManagement } from './pages/StaffManagement';
+import { StudentDirectory } from './pages/StudentDirectory';
 import { BookImport } from './pages/BookImport';
 
 // Protected Route Component
@@ -97,6 +99,14 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/repository"
+          element={
+            <ProtectedRoute>
+              <InstitutionalRepository />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected Staff Approvals Queue */}
         <Route
@@ -104,6 +114,16 @@ const AppContent: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['LIBRARIAN', 'REGISTRAR', 'HOD', 'LEVEL_COORDINATOR']}>
               <ApprovalQueue />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected Student Directory */}
+        <Route
+          path="/admin/students"
+          element={
+            <ProtectedRoute allowedRoles={['LIBRARIAN', 'REGISTRAR', 'HOD', 'LEVEL_COORDINATOR']}>
+              <StudentDirectory />
             </ProtectedRoute>
           }
         />

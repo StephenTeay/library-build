@@ -17,6 +17,8 @@ export interface ILibraryCatalogProvider {
   search(queryText: string, departmentId?: number, limit?: number): Promise<LibraryItem[]>;
   getItemAvailability(id: number): Promise<LibraryItem | null>;
   addItem(item: Omit<LibraryItem, 'id'>): Promise<LibraryItem>;
+  updateItem(id: number, item: Partial<Omit<LibraryItem, 'id'>>): Promise<LibraryItem | null>;
+  deleteItem(id: number): Promise<{ success: boolean; message?: string }>;
 }
 
 /**
@@ -87,6 +89,45 @@ export class LocalCatalogProvider implements ILibraryCatalogProvider {
     );
     return res.rows[0];
   }
+
+  async updateItem(id: number, item: Partial<Omit<LibraryItem, 'id'>>): Promise<LibraryItem | null> {
+    const existing = await this.getItemAvailability(id);
+    if (!existing) return null;
+
+    const title = item.title !== undefined ? item.title : existing.title;
+    const author = item.author !== undefined ? item.author : existing.author;
+    const isbn = item.isbn !== undefined ? item.isbn : existing.isbn;
+    const callNumber = item.call_number !== undefined ? item.call_number : existing.call_number;
+    const shelfLocation = item.shelf_location !== undefined ? item.shelf_location : existing.shelf_location;
+    const copiesTotal = item.copies_total !== undefined ? Number(item.copies_total) : existing.copies_total;
+    const copiesAvailable = item.copies_available !== undefined ? Number(item.copies_available) : existing.copies_available;
+    const departmentId = item.department_id !== undefined ? (item.department_id ? Number(item.department_id) : null) : existing.department_id;
+
+    const res = await pool.query(
+      `UPDATE library_items
+       SET title = $1, author = $2, isbn = $3, call_number = $4, shelf_location = $5,
+           copies_total = $6, copies_available = $7, department_id = $8, updated_at = NOW()
+       WHERE id = $9
+       RETURNING *;`,
+      [title, author, isbn, callNumber, shelfLocation, copiesTotal, copiesAvailable, departmentId, id]
+    );
+
+    return res.rows[0] || null;
+  }
+
+  async deleteItem(id: number): Promise<{ success: boolean; message?: string }> {
+    // Check if there are active loans
+    const loansRes = await pool.query(
+      `SELECT COUNT(*)::int as active_loans FROM circulation_loans WHERE item_id = $1 AND status = 'ACTIVE'`,
+      [id]
+    );
+    if (loansRes.rows[0]?.active_loans > 0) {
+      return { success: false, message: 'Cannot delete book: there are active circulation loans issued to students.' };
+    }
+
+    await pool.query('DELETE FROM library_items WHERE id = $1', [id]);
+    return { success: true };
+  }
 }
 
 /**
@@ -105,9 +146,6 @@ export class KohaSruProvider implements ILibraryCatalogProvider {
 
   async search(queryText: string, departmentId?: number, limit = 50): Promise<LibraryItem[]> {
     console.log(`[KohaSruProvider Stub] Querying remote SRU endpoint: ${this.sruBaseUrl}?query=${queryText}&limit=${limit}`);
-    // Future implementation:
-    // const sruXml = await fetch(`${this.sruBaseUrl}?operation=searchRetrieve&version=1.2&query=bath.title="${queryText}"&maximumRecords=${limit}`);
-    // return parseMarc21XmlToLibraryItems(sruXml);
     return [];
   }
 
@@ -118,6 +156,14 @@ export class KohaSruProvider implements ILibraryCatalogProvider {
 
   async addItem(_item: Omit<LibraryItem, 'id'>): Promise<LibraryItem> {
     throw new Error('Direct write not supported on remote Koha SRU provider. Manage catalog in Koha staff client.');
+  }
+
+  async updateItem(_id: number, _item: Partial<Omit<LibraryItem, 'id'>>): Promise<LibraryItem | null> {
+    throw new Error('Direct update not supported on remote Koha SRU provider.');
+  }
+
+  async deleteItem(_id: number): Promise<{ success: boolean; message?: string }> {
+    throw new Error('Direct delete not supported on remote Koha SRU provider.');
   }
 }
 

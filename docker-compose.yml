@@ -23,9 +23,14 @@ services:
     restart: always
     environment:
       - initialBuckets=fss-elibrary-storage
+      - INITIAL_BUCKETS=fss-elibrary-storage
+      - root=/s3mock-data
+    volumes:
+      - s3mock_data:/s3mock-data
     ports:
       - "9090:9090"
       - "9191:9191"
 
 volumes:
   postgres_data:
+  s3mock_data:

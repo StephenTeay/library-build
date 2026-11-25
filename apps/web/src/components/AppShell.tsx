@@ -77,7 +77,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const adminItems = [
     ...(isAcademicStaff
-      ? [{ label: 'Approval Queue', path: '/admin/approvals', icon: '📋', active: location.pathname.startsWith('/admin/approvals') }]
+      ? [
+          { label: 'Student Directory', path: '/admin/students', icon: '🎓', active: location.pathname.startsWith('/admin/students') },
+          { label: 'Approval Queue', path: '/admin/approvals', icon: '📋', active: location.pathname.startsWith('/admin/approvals') },
+        ]
       : []),
     ...(isSuperAdmin
       ? [{ label: 'Manage Staff', path: '/admin/staff', icon: '👥', active: location.pathname.startsWith('/admin/staff') }]

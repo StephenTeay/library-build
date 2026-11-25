@@ -10,6 +10,12 @@ import { aggregatorRouter } from './modules/aggregator/aggregatorRoutes.js';
 import { discussionRouter } from './modules/discussions/discussionRoutes.js';
 import { courseRouter } from './modules/courses/courseRoutes.js';
 import { staffRouter } from './modules/staff/staffRoutes.js';
+import { studentRouter } from './modules/students/studentRoutes.js';
+import { circulationRouter } from './modules/circulation/circulationRoutes.js';
+import { thesesRouter } from './modules/theses/thesesRoutes.js';
+import { oaiRouter } from './modules/oai/oaiRoutes.js';
+import { analyticsRouter } from './modules/analytics/analyticsRoutes.js';
+import { bookshelfRouter } from './modules/bookshelf/bookshelfRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import {
   requireRole,
@@ -23,9 +29,15 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+const host = process.env.HOST || '0.0.0.0';
 
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. mobile apps, curl) or any connecting desktop origin
+    if (!origin) return callback(null, true);
+    // Allow all connecting desktops (LAN IP addresses, localhost, tunnels)
+    return callback(null, origin);
+  },
   credentials: true,
 }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
@@ -59,6 +71,24 @@ app.use('/api/discussions', discussionRouter);
 
 // Staff Management Routes (Librarian / Super Admin)
 app.use('/api/staff', staffRouter);
+
+// Student Directory & Management Routes
+app.use('/api/students', studentRouter);
+
+// Circulation Desk & Lending Routes (Physical & Digital)
+app.use('/api/circulation', circulationRouter);
+
+// Institutional Repository (Theses & Capstone Projects)
+app.use('/api/theses', thesesRouter);
+
+// OAI-PMH 2.0 Academic Metadata Harvesting Endpoint
+app.use('/api/oai', oaiRouter);
+
+// Library Analytics & Search Demand Tracking
+app.use('/api/analytics', analyticsRouter);
+
+// Patron Bookshelf & Reading Lists
+app.use('/api/bookshelf', bookshelfRouter);
 
 // --------------------------------------------------------------------------
 // Permission Matrix Testing Endpoints (Enforces Role-Scope Middleware)
@@ -135,7 +165,14 @@ app.get('/api/dashboard/stats', authenticate, (_req, res) => {
 export default app;
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`[FSS-API] Server listening on port ${port}`);
+  app.listen(Number(port), host, async () => {
+    console.log(`[FSS-API] Server listening on ${host}:${port}`);
+    try {
+      const { getStorageProvider } = await import('./providers/storage/s3StorageProvider.js');
+      await getStorageProvider().ensureBucketExists();
+      console.log(`[FSS-API] Storage bucket verified: ${getStorageProvider().getBucketName()}`);
+    } catch (err: any) {
+      console.warn(`[FSS-API] Warning verifying storage bucket:`, err.message || err);
+    }
   });
 }

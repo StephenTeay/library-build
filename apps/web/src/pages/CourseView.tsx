@@ -3,10 +3,15 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOffline } from '../context/OfflineContext';
 import { useSettings } from '../context/SettingsContext';
-import { Course, LearningResource, LibraryItem, DiscussionThread, DiscussionPost } from '../types';
+import { Course, LearningResource, LibraryItem, DiscussionThread, DiscussionPost, CourseReserve } from '../types';
 import { api } from '../services/api';
 import { YouTubeLite } from '../components/YouTubeLite';
+import { extractYouTubeVideoId } from '../utils/youtube';
 import { ResourceUploadModal } from '../components/ResourceUploadModal';
+import { BulkUploadModal } from '../components/BulkUploadModal';
+import { ReaderModal } from '../components/ReaderModal';
+import { CitationModal } from '../components/CitationModal';
+import { CitationItem } from '../utils/citationFormatter';
 
 export const CourseView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +30,7 @@ export const CourseView: React.FC = () => {
   // Loading & Modals
   const [loading, setLoading] = useState(true);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
   const [cachingId, setCachingId] = useState<string | null>(null);
   const [copiedSnippetId, setCopiedSnippetId] = useState<string | null>(null);
 
@@ -42,6 +48,20 @@ export const CourseView: React.FC = () => {
 
   // Filter state for resources
   const [resourceFilter, setResourceFilter] = useState<string>('ALL');
+
+  // Course Reserves State
+  const [reserves, setReserves] = useState<CourseReserve[]>([]);
+  const [showAddReserve, setShowAddReserve] = useState(false);
+  const [reserveItemType, setReserveItemType] = useState<'BOOK' | 'RESOURCE'>('BOOK');
+  const [reserveItemId, setReserveItemId] = useState('');
+  const [reserveRequirement, setReserveRequirement] = useState<'REQUIRED' | 'RECOMMENDED'>('REQUIRED');
+  const [reserveNotes, setReserveNotes] = useState('');
+  const [isAddingReserve, setIsAddingReserve] = useState(false);
+  const [savedShelfIds, setSavedShelfIds] = useState<Set<string>>(new Set());
+
+  // Reader & Citation Modals
+  const [readingResource, setReadingResource] = useState<LearningResource | null>(null);
+  const [citationItem, setCitationItem] = useState<CitationItem | null>(null);
 
   const isStaff = user && ['REGISTRAR', 'LIBRARIAN', 'HOD', 'LECTURER'].includes(user.role);
 
@@ -65,6 +85,9 @@ export const CourseView: React.FC = () => {
       const libRes = await api.get<{ items: LibraryItem[] }>(`/library/course/${courseId}`);
       setLibraryItems(libRes.items || []);
 
+      const reservesRes = await api.get<{ reserves: CourseReserve[] }>(`/courses/${courseId}/reserves`).catch(() => ({ reserves: [] }));
+      setReserves(reservesRes.reserves || []);
+
       const discRes = await api.get<{ threads: DiscussionThread[] }>(`/discussions/course/${courseId}`);
       setThreads(discRes.threads || []);
     } catch (err) {
@@ -73,6 +96,56 @@ export const CourseView: React.FC = () => {
       setLoading(false);
     }
   }, [courseId, isResourceCached]);
+
+  const handleAddReserve = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reserveItemId.trim()) return;
+    setIsAddingReserve(true);
+    try {
+      await api.post(`/courses/${courseId}/reserves`, {
+        item_type: reserveItemType,
+        item_id: reserveItemId.trim(),
+        requirement_level: reserveRequirement,
+        notes: reserveNotes.trim() || undefined,
+      });
+      setShowAddReserve(false);
+      setReserveItemId('');
+      setReserveNotes('');
+      fetchCourseData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add course reserve');
+    } finally {
+      setIsAddingReserve(false);
+    }
+  };
+
+  const handleRemoveReserve = async (reserveId: string) => {
+    if (!confirm('Remove this item from course reserves?')) return;
+    try {
+      await api.delete(`/courses/${courseId}/reserves/${reserveId}`);
+      fetchCourseData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove reserve');
+    }
+  };
+
+  const handleSaveToShelf = async (itemType: 'BOOK' | 'RESOURCE', itemId: string, title?: string) => {
+    if (!user) {
+      alert('Please sign in to save items to your personal bookshelf.');
+      return;
+    }
+    try {
+      await api.post('/bookshelf', {
+        item_type: itemType,
+        item_id: itemId,
+        shelf_status: 'WANT_TO_READ',
+      });
+      setSavedShelfIds((prev) => new Set(prev).add(itemId));
+      alert(`Saved "${title || 'Item'}" to your bookshelf.`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save to bookshelf');
+    }
+  };
 
   useEffect(() => {
     if (courseId) {
@@ -283,7 +356,15 @@ export const CourseView: React.FC = () => {
 
           {/* Action: Add Resource for Staff */}
           {isStaff && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 flex items-center gap-2">
+              <button
+                onClick={() => setIsBulkUploadOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 rounded-lg font-semibold text-xs sm:text-sm shadow-xs transition-colors min-h-[44px]"
+                title="Batch upload multiple course materials at once"
+              >
+                <span>⚡</span>
+                <span>Bulk Upload</span>
+              </button>
               <button
                 onClick={() => setIsUploadOpen(true)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-lg font-semibold text-xs sm:text-sm shadow-xs transition-colors min-h-[44px]"
@@ -375,6 +456,12 @@ export const CourseView: React.FC = () => {
                 const badge = getFormatBadge(res.resource_type);
                 const isCached = cachedStatusMap[res.id];
                 const isCodeResource = res.resource_type === 'CODE';
+                const youtubeId = extractYouTubeVideoId(res.video_id) || extractYouTubeVideoId(res.external_url);
+                const isExternalPdf = Boolean(
+                  res.external_url?.endsWith('.pdf') ||
+                  res.external_url?.includes('arxiv.org/pdf') ||
+                  res.external_url?.includes('/pdf')
+                );
 
                 return (
                   <div
@@ -411,12 +498,62 @@ export const CourseView: React.FC = () => {
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-2 flex-shrink-0 pt-2 sm:pt-0">
-                        {res.r2_key ? (
+                      <div className="flex flex-wrap items-center gap-2 flex-shrink-0 pt-2 sm:pt-0">
+                        {youtubeId ? (
                           <>
                             <button
+                              onClick={() => setReadingResource({ ...res, video_id: youtubeId })}
+                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px] flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              title="Watch video in browser theater mode"
+                            >
+                              <span>▶</span>
+                              <span>Watch in Browser</span>
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                setCitationItem({
+                                  title: res.title,
+                                  courseCode: course?.code,
+                                  courseTitle: course?.title,
+                                  author: res.uploader_name || course?.lecturer_name,
+                                  year: new Date(res.created_at).getFullYear(),
+                                  resourceType: res.resource_type,
+                                })
+                              }
+                              className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-md text-xs font-semibold border border-slate-200 transition-colors min-h-[36px] flex items-center gap-1 cursor-pointer"
+                              title="Generate Academic Citation"
+                            >
+                              <span>📜</span>
+                              <span>Cite</span>
+                            </button>
+
+                            {res.external_url && (
+                              <a
+                                href={res.external_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-md text-xs transition-colors shrink-0"
+                                title="Open in YouTube"
+                              >
+                                <span>↗</span>
+                              </a>
+                            )}
+                          </>
+                        ) : res.r2_key ? (
+                          <>
+                            <button
+                              onClick={() => setReadingResource(res)}
+                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px] flex items-center gap-1.5 shadow-xs"
+                              title="Read online in browser"
+                            >
+                              <span>📖</span>
+                              <span>Read Online</span>
+                            </button>
+
+                            <button
                               onClick={() => handleDownload(res.id, res.title)}
-                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px]"
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-md text-xs font-semibold transition-colors min-h-[36px]"
                             >
                               Download
                             </button>
@@ -432,17 +569,86 @@ export const CourseView: React.FC = () => {
                             >
                               {cachingId === res.id ? 'Saving...' : isCached ? 'Remove Offline' : 'Save Offline'}
                             </button>
+
+                            <button
+                              onClick={() =>
+                                setCitationItem({
+                                  title: res.title,
+                                  courseCode: course?.code,
+                                  courseTitle: course?.title,
+                                  author: res.uploader_name || course?.lecturer_name,
+                                  year: new Date(res.created_at).getFullYear(),
+                                  resourceType: res.resource_type,
+                                })
+                              }
+                              className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-md text-xs font-semibold border border-slate-200 transition-colors min-h-[36px] flex items-center gap-1"
+                              title="Generate Academic Citation"
+                            >
+                              <span>📜</span>
+                              <span>Cite</span>
+                            </button>
+                          </>
+                        ) : isExternalPdf ? (
+                          <>
+                            <button
+                              onClick={() => setReadingResource(res)}
+                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px] flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              title="Read PDF in browser"
+                            >
+                              <span>📖</span>
+                              <span>Read in Browser</span>
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                setCitationItem({
+                                  title: res.title,
+                                  courseCode: course?.code,
+                                  courseTitle: course?.title,
+                                  author: res.uploader_name || course?.lecturer_name,
+                                  year: new Date(res.created_at).getFullYear(),
+                                  resourceType: res.resource_type,
+                                })
+                              }
+                              className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-md text-xs font-semibold border border-slate-200 transition-colors min-h-[36px] flex items-center gap-1 cursor-pointer"
+                              title="Generate Academic Citation"
+                            >
+                              <span>📜</span>
+                              <span>Cite</span>
+                            </button>
+
+                            {res.external_url && (
+                              <a
+                                href={res.external_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-md text-xs transition-colors shrink-0"
+                                title="Open original document link"
+                              >
+                                <span>↗</span>
+                              </a>
+                            )}
                           </>
                         ) : res.external_url ? (
-                          <a
-                            href={res.external_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px]"
-                          >
-                            <span>Open Resource</span>
-                            <span>↗</span>
-                          </a>
+                          <>
+                            <button
+                              onClick={() => setReadingResource(res)}
+                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-md text-xs font-semibold transition-colors min-h-[36px] flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              title="Read in browser"
+                            >
+                              <span>📖</span>
+                              <span>Read in Browser</span>
+                            </button>
+                            <a
+                              href={res.external_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-md text-xs font-semibold transition-colors min-h-[36px]"
+                            >
+                              <span>Open External</span>
+                              <span>↗</span>
+                            </a>
+                          </>
                         ) : null}
                       </div>
                     </div>
@@ -467,39 +673,14 @@ export const CourseView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Video Rendering with Data-Saver Support */}
-                    {res.resource_type === 'VIDEO' && res.video_id && (
-                      <div className="mt-4 max-w-xl">
-                        {dataSaver ? (
-                          /* Data-Saver Mode: Sleek, compact text-and-duration card */
-                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded">
-                                  VIDEO • STREAM
-                                </span>
-                                <span className="text-xs text-slate-500">Data-Saver Active</span>
-                              </div>
-                              <p className="text-xs font-medium text-slate-700">{res.title}</p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                const win = window.open(`https://www.youtube.com/watch?v=${res.video_id}`, '_blank');
-                                if (win) win.focus();
-                              }}
-                              className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded text-xs font-semibold shrink-0"
-                            >
-                              Tap to Stream
-                            </button>
-                          </div>
-                        ) : (
-                          /* Standard Mode: Lite YouTube facade */
-                          <YouTubeLite
-                            videoId={res.video_id}
-                            title={res.title}
-                            startSeconds={res.start_seconds}
-                          />
-                        )}
+                    {/* Inline Video Player (Plays directly in the browser card) */}
+                    {youtubeId && (
+                      <div className="mt-4 max-w-2xl">
+                        <YouTubeLite
+                          videoId={youtubeId}
+                          title={res.title}
+                          startSeconds={res.start_seconds}
+                        />
                       </div>
                     )}
                   </div>
@@ -589,84 +770,294 @@ export const CourseView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: PHYSICAL LIBRARY */}
+      {/* TAB 3: COURSE RESERVES & LIBRARY READINGS */}
       {activeTab === 'LIBRARY' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs">
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                Recommended Print Books in FSS-IB Main Library
+                Syllabus Course Reserves & Library Collection
               </h2>
               <p className="text-xs text-slate-500">
-                Live shelf catalog holdings and physical copy availability for this course module.
+                Mandatory textbook reserves, recommended readings, and real-time shelf availability for {course?.code}.
               </p>
             </div>
-            <Link
-              to="/library"
-              className="text-xs font-semibold text-emerald-900 hover:text-emerald-800 underline self-start sm:self-auto"
-            >
-              Browse Full Catalog →
-            </Link>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {isStaff && (
+                <button
+                  onClick={() => setShowAddReserve(!showAddReserve)}
+                  className="px-3 py-1.5 bg-emerald-900 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>➕</span>
+                  <span>{showAddReserve ? 'Close Reserve Form' : 'Assign Reserve'}</span>
+                </button>
+              )}
+              <Link
+                to="/library"
+                className="text-xs font-semibold text-emerald-900 hover:text-emerald-800 underline px-2 py-1"
+              >
+                Full Catalog →
+              </Link>
+            </div>
           </div>
 
-          {libraryItems.length === 0 ? (
-            <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center">
-              <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
-                📖
-              </div>
-              <h3 className="text-base font-bold text-slate-900 mb-1">No Library Books Mapped Yet</h3>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
-                Search the complete physical collection in the{' '}
-                <Link to="/library" className="text-emerald-900 font-semibold underline">
-                  Library OPAC
-                </Link>.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {libraryItems.map((item) => {
-                const isAvailable = item.copies_available > 0;
-                return (
-                  <div
-                    key={item.id}
-                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between"
+          {/* Staff Assign Course Reserve Form */}
+          {showAddReserve && isStaff && (
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-5 space-y-4">
+              <h3 className="text-xs sm:text-sm font-bold text-emerald-950 uppercase tracking-wide">
+                Assign Reading to Course Reserves
+              </h3>
+              <form onSubmit={handleAddReserve} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Item Type</label>
+                  <select
+                    value={reserveItemType}
+                    onChange={(e) => setReserveItemType(e.target.value as any)}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-md p-2"
                   >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-sm bg-slate-900 text-white tracking-wider">
-                          {item.call_number || 'QA276 .A45'}
-                        </span>
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1.5 tabular-nums ${
-                            isAvailable
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-800 border border-rose-200'
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-600' : 'bg-rose-600'}`}></span>
-                          <span>{item.copies_available} of {item.copies_total} Available</span>
-                        </span>
-                      </div>
+                    <option value="BOOK">Physical Library Book</option>
+                    <option value="RESOURCE">Digital Course Resource</option>
+                  </select>
+                </div>
 
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 mb-1">
-                        {item.title}
-                      </h3>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    {reserveItemType === 'BOOK' ? 'Select Book / Enter ID' : 'Select Resource'}
+                  </label>
+                  {reserveItemType === 'BOOK' ? (
+                    <select
+                      value={reserveItemId}
+                      onChange={(e) => setReserveItemId(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-300 rounded-md p-2"
+                      required
+                    >
+                      <option value="">-- Choose Library Book --</option>
+                      {libraryItems.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.title} ({b.call_number})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={reserveItemId}
+                      onChange={(e) => setReserveItemId(e.target.value)}
+                      className="w-full text-xs bg-white border border-slate-300 rounded-md p-2"
+                      required
+                    >
+                      <option value="">-- Choose Uploaded Resource --</option>
+                      {resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.title} ({r.resource_type})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
-                      <p className="text-xs text-slate-600 mb-3">
-                        <span className="font-semibold text-slate-700">Author:</span> {item.author}
-                      </p>
-                    </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Requirement Level</label>
+                  <select
+                    value={reserveRequirement}
+                    onChange={(e) => setReserveRequirement(e.target.value as any)}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-md p-2"
+                  >
+                    <option value="REQUIRED">🌟 REQUIRED (Mandatory)</option>
+                    <option value="RECOMMENDED">📖 RECOMMENDED (Supplemental)</option>
+                  </select>
+                </div>
 
-                    <div className="bg-slate-50 border border-slate-200 rounded-md p-2.5 text-xs text-slate-700 flex items-center justify-between">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Instructor Syllabus Notes</label>
+                  <input
+                    type="text"
+                    value={reserveNotes}
+                    onChange={(e) => setReserveNotes(e.target.value)}
+                    placeholder="e.g. Read Chapters 1-3 before Week 4"
+                    className="w-full text-xs bg-white border border-slate-300 rounded-md p-2"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddReserve(false)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isAddingReserve || !reserveItemId}
+                    className="px-4 py-1.5 bg-emerald-900 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-md text-xs font-semibold shadow-xs"
+                  >
+                    {isAddingReserve ? 'Assigning...' : 'Pin to Course Reserves'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Section 1: Official Course Reserves */}
+          <div className="space-y-3">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+              <span>🌟</span>
+              <span>Official Syllabus Reserves ({reserves.length})</span>
+            </h3>
+
+            {reserves.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-200 rounded-xl p-6 text-center text-xs text-slate-500">
+                No formal syllabus reserves pinned yet. Lecturers can assign required books from the catalog above.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {reserves.map((resItem) => {
+                  const isRequired = resItem.requirement_level === 'REQUIRED';
+                  return (
+                    <div
+                      key={resItem.id}
+                      className={`bg-white border rounded-xl p-5 shadow-xs flex flex-col justify-between transition-colors ${
+                        isRequired ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'
+                      }`}
+                    >
                       <div>
-                        <span className="font-semibold text-slate-500">Shelf:</span>{' '}
-                        <span className="font-medium">{item.shelf_location || 'Central Library • Stack B'}</span>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span
+                            className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded tracking-wide ${
+                              isRequired
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                            }`}
+                          >
+                            {resItem.requirement_level}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400 uppercase">
+                            {resItem.item_type}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-snug mb-1">
+                          {resItem.title}
+                        </h4>
+                        <p className="text-xs text-slate-600 mb-2">By: {resItem.author}</p>
+
+                        {resItem.call_number && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                              {resItem.call_number}
+                            </span>
+                            {typeof resItem.copies_available === 'number' && (
+                              <span className="text-[11px] text-emerald-800 font-medium">
+                                • {resItem.copies_available} on Central Library Shelf
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {resItem.notes && (
+                          <div className="bg-slate-50 border-l-2 border-amber-500 p-2 text-xs text-slate-700 italic my-2">
+                            "{resItem.notes}"
+                          </div>
+                        )}
                       </div>
-                      <span className="text-[11px] text-slate-500">Central Library</span>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() =>
+                              setCitationItem({
+                                title: resItem.title || 'Course Reserve',
+                                author: resItem.author,
+                                courseCode: resItem.call_number || course?.code,
+                                institution: 'Central Library, Federal School of Statistics, Ibadan',
+                              })
+                            }
+                            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                          >
+                            <span>📜</span>
+                            <span>Cite</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleSaveToShelf(resItem.item_type, resItem.item_id, resItem.title)}
+                            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                          >
+                            <span>📌</span>
+                            <span>{savedShelfIds.has(resItem.item_id) ? 'Saved' : 'Save'}</span>
+                          </button>
+                        </div>
+
+                        {isStaff && (
+                          <button
+                            onClick={() => handleRemoveReserve(resItem.id)}
+                            className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: General Department Catalog Holdings */}
+          {libraryItems.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-slate-200">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide">
+                Additional Recommended Print Holdings in Library ({libraryItems.length})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {libraryItems.map((item) => {
+                  const isAvailable = item.copies_available > 0;
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-sm bg-slate-900 text-white tracking-wider">
+                            {item.call_number || 'QA276 .A45'}
+                          </span>
+                          <span
+                            className={`text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1.5 tabular-nums ${
+                              isAvailable
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-800 border border-rose-200'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-600' : 'bg-rose-600'}`}></span>
+                            <span>{item.copies_available} of {item.copies_total} Available</span>
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900 mb-1">
+                          {item.title}
+                        </h4>
+
+                        <p className="text-xs text-slate-600 mb-3">
+                          <span className="font-semibold text-slate-700">Author:</span> {item.author}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-700">
+                        <span className="font-medium text-slate-500">
+                          Shelf: <strong className="text-slate-800">{item.shelf_location || 'Central Library'}</strong>
+                        </span>
+                        <button
+                          onClick={() => handleSaveToShelf('BOOK', String(item.id), item.title)}
+                          className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold"
+                        >
+                          📌 Save
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -876,6 +1267,38 @@ export const CourseView: React.FC = () => {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onSuccess={() => fetchCourseData()}
+      />
+
+      {/* Bulk Upload Modal for Lecturers/Admins */}
+      <BulkUploadModal
+        isOpen={isBulkUploadOpen}
+        onClose={() => setIsBulkUploadOpen(false)}
+        onSuccess={() => fetchCourseData()}
+        defaultCourseId={courseId}
+      />
+
+      {/* In-Browser Reader Modal */}
+      <ReaderModal
+        isOpen={Boolean(readingResource)}
+        resource={readingResource}
+        onClose={() => setReadingResource(null)}
+        onOpenCitation={(res) => {
+          setCitationItem({
+            title: res.title,
+            courseCode: course?.code,
+            courseTitle: course?.title,
+            author: res.uploader_name || course?.lecturer_name,
+            year: new Date(res.created_at).getFullYear(),
+            resourceType: res.resource_type,
+          });
+        }}
+      />
+
+      {/* Academic Citation Modal */}
+      <CitationModal
+        isOpen={Boolean(citationItem)}
+        item={citationItem}
+        onClose={() => setCitationItem(null)}
       />
     </div>
   );

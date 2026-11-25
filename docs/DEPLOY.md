@@ -181,14 +181,20 @@ If you just want to deploy and test the platform immediately without configuring
 
 ## Step 5: Frontend PWA Deployment (Cloudflare Pages)
 
+> [!IMPORTANT]
+> Make sure to select the **Pages** tab in Cloudflare (NOT the Workers tab). Cloudflare Pages automatically handles static asset hosting and runs `functions/api/[[path]].ts` as an edge proxy without needing `wrangler deploy`.
+
 1. **Connect Repository:**
-   - In Cloudflare Dashboard, go to **Workers & Pages > Create application > Pages > Connect to Git**.
-   - Select your repository.
+   - In Cloudflare Dashboard, go to **Workers & Pages**.
+   - Click **Create application**.
+   - Click the **Pages** tab at the top (do not stay on Workers!).
+   - Click **Connect to Git** and select your repository (`library-build`).
 2. **Build Configuration:**
    - **Framework Preset:** `Vite`
    - **Build Command:** `npm install && npm run build --workspace=@fss/web`
    - **Build Output Directory:** `apps/web/dist`
-   - **Root Directory:** `/` (Monorepo root)
+   - **Root Directory:** `/` (leave as root)
+   - **Deploy Command:** Leave **EMPTY / BLANK** (do NOT enter `npx wrangler deploy`)
 3. **Environment Variables:**
    - `BACKEND_URL`: `https://fss-elibrary-api.onrender.com` (Used by Pages Functions streaming proxy)
    - `NODE_VERSION`: `20.18.0`
@@ -200,6 +206,12 @@ If you just want to deploy and test the platform immediately without configuring
    This ensures:
    - Zero CORS issues (first-party `/api/*` cookie exchange).
    - `HttpOnly`, `SameSite=Lax` cookies work securely under `*.pages.dev`.
+
+> [!NOTE]
+> If you already created the project and see `Executing user deploy command: npx wrangler deploy`:
+> - Go to your project in Cloudflare > **Settings** > **Builds & deployments** > **Build configuration**.
+> - Find the **Deploy command** field and **delete `npx wrangler deploy`** so the field is completely empty.
+> - Or, if Cloudflare created it as a "Worker", delete the project and recreate it under the **Pages** tab.
 
 ---
 

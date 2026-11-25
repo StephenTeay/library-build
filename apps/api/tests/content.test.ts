@@ -352,6 +352,41 @@ describe('Milestone 5: Content, Storage & Library Services', () => {
       expect(res.body.resources.length).toBeGreaterThan(0);
       expect(res.body.resources.some((r: any) => r.title.includes('NBS') || r.title.includes('R Project'))).toBe(true);
     });
+
+    it('Enrolled student can view and stream learning resource with Range support', async () => {
+      // 1. Get confirmed COM111 resource from test setup
+      const listRes = await request(app)
+        .get(`/api/resources/course/${courseCom111Id}`)
+        .set('Cookie', [`accessToken=${studentEnrolledToken}`]);
+
+      expect(listRes.status).toBe(200);
+      const targetResource = listRes.body.resources[0];
+      expect(targetResource).toBeDefined();
+
+      // 2. Request view metadata
+      const viewRes = await request(app)
+        .get(`/api/resources/${targetResource.id}/view`)
+        .set('Cookie', [`accessToken=${studentEnrolledToken}`]);
+
+      expect(viewRes.status).toBe(200);
+      expect(viewRes.body.streamUrl).toBe(`/api/resources/${targetResource.id}/stream`);
+
+      // 3. Stream resource (enrolled student)
+      const streamRes = await request(app)
+        .get(`/api/resources/${targetResource.id}/stream`)
+        .set('Cookie', [`accessToken=${studentEnrolledToken}`]);
+
+      expect(streamRes.status).toBe(200);
+      expect(streamRes.headers['accept-ranges']).toBe('bytes');
+      expect(streamRes.headers['content-disposition']).toContain('inline');
+
+      // 4. Unenrolled student is blocked (403 Forbidden)
+      const deniedRes = await request(app)
+        .get(`/api/resources/${targetResource.id}/stream`)
+        .set('Cookie', [`accessToken=${studentUnenrolledToken}`]);
+
+      expect(deniedRes.status).toBe(403);
+    });
   });
 
   // ============================================================================

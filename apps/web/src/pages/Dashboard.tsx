@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Course } from '../types';
 import { api } from '../services/api';
 import { StorageGauge } from '../components/StorageGauge';
+import { CourseModal } from '../components/CourseModal';
+import { BulkUploadModal } from '../components/BulkUploadModal';
 
 const DEPARTMENTS = [
   { code: 'ALL', name: 'All Departments' },
@@ -22,25 +24,27 @@ export const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [error, setError] = useState<string | null>(null);
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [courseToEdit, setCourseToEdit] = useState<Course | null>(null);
+
+  const fetchCourses = async () => {
+    try {
+      setLoading(true);
+      // If student: fetch enrolled courses; if lecturer/staff: fetch assigned / department courses
+      const endpoint = user?.role === 'STUDENT' ? '/courses/enrolled' : '/courses';
+      const res = await api.get<{ courses: Course[] }>(endpoint);
+      setCourses(res.courses || []);
+    } catch (err: any) {
+      console.warn('Failed to load courses from API, checking fallback', err);
+      setError('Could not load live course catalog. Offline cached modules remain available.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user || user.must_change_password) return;
-
-    const fetchCourses = async () => {
-      try {
-        setLoading(true);
-        // If student: fetch enrolled courses; if lecturer/staff: fetch assigned / department courses
-        const endpoint = user?.role === 'STUDENT' ? '/courses/enrolled' : '/courses';
-        const res = await api.get<{ courses: Course[] }>(endpoint);
-        setCourses(res.courses || []);
-      } catch (err: any) {
-        console.warn('Failed to load courses from API, checking fallback', err);
-        setError('Could not load live course catalog. Offline cached modules remain available.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchCourses();
   }, [user]);
 
@@ -154,35 +158,72 @@ export const Dashboard: React.FC = () => {
                 </p>
               </div>
 
-              {/* Course Search Input */}
-              <div className="relative min-w-[220px]">
-                <input
-                  type="text"
-                  placeholder="Search code or title..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-700 focus:bg-white transition-all"
-                />
-                <span className="absolute left-2.5 top-2.5 text-xs text-slate-400">🔍</span>
+              {/* Course Search & Add Course Controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative min-w-[200px]">
+                  <input
+                    type="text"
+                    placeholder="Search code or title..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-700 focus:bg-white transition-all"
+                  />
+                  <span className="absolute left-2.5 top-2.5 text-xs text-slate-400">🔍</span>
+                </div>
+
+                {['REGISTRAR', 'LIBRARIAN', 'HOD'].includes(user?.role || '') && (
+                  <>
+                    <button
+                      onClick={() => setShowBulkModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap min-h-[36px]"
+                      title="Bulk upload learning materials across courses"
+                    >
+                      <span>⚡</span>
+                      <span>Bulk Ingest</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCourseToEdit(null);
+                        setShowCourseModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-900 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap min-h-[36px]"
+                    >
+                      <span>➕</span>
+                      <span>Add Course</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Department Quick Filter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {DEPARTMENTS.map((dept) => (
-                <button
-                  key={dept.code}
-                  onClick={() => setSelectedDept(dept.code)}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all ${
-                    selectedDept === dept.code
-                      ? 'bg-emerald-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
-                >
-                  {dept.code === 'ALL' ? 'All Departments' : dept.code}
-                </button>
-              ))}
-            </div>
+            {/* Department Quick Filter Chips - Restricted to Staff/Admins */}
+            {user?.role !== 'STUDENT' ? (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                {DEPARTMENTS.map((dept) => (
+                  <button
+                    key={dept.code}
+                    onClick={() => setSelectedDept(dept.code)}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                      selectedDept === dept.code
+                        ? 'bg-emerald-900 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                    }`}
+                  >
+                    {dept.code === 'ALL' ? 'All Departments' : dept.code}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-slate-600 font-medium bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg w-fit">
+                <span className="font-semibold text-emerald-900">Departmental Scope:</span>
+                <span className="font-semibold text-slate-900">{user.department_code || user.department_name || 'Enrolled Curriculum'}</span>
+                {user.programme && (
+                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[11px] font-bold">
+                    {user.programme} {user.level || 1}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -274,14 +315,27 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="pt-4 mt-2">
+                    <div className="pt-4 mt-2 flex items-center gap-2">
                       <Link
                         to={`/course/${course.id}`}
-                        className="w-full min-h-[40px] flex items-center justify-center gap-2 bg-emerald-900 hover:bg-emerald-950 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-[0.99]"
+                        className="flex-1 min-h-[40px] flex items-center justify-center gap-2 bg-emerald-900 hover:bg-emerald-950 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-[0.99]"
                       >
                         <span>Open Module & Materials</span>
                         <span>→</span>
                       </Link>
+
+                      {['REGISTRAR', 'LIBRARIAN', 'HOD'].includes(user?.role || '') && (
+                        <button
+                          onClick={() => {
+                            setCourseToEdit(course);
+                            setShowCourseModal(true);
+                          }}
+                          className="px-3 min-h-[40px] border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                          title="Edit Course Details"
+                        >
+                          ✏️
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -294,6 +348,52 @@ export const Dashboard: React.FC = () => {
         <div className="lg:col-span-4 space-y-5">
           {/* Storage Gauge */}
           <StorageGauge />
+
+          {/* Administration Quick Hub for Staff/Admins */}
+          {['REGISTRAR', 'LIBRARIAN', 'HOD', 'LEVEL_COORDINATOR'].includes(user?.role || '') && (
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                <span>Academic Administration</span>
+                <span className="font-mono text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded font-bold">STAFF</span>
+              </h3>
+
+              <div className="space-y-2">
+                <Link
+                  to="/admin/students"
+                  className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200 text-slate-800 transition-all group no-underline"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-900 text-white flex items-center justify-center text-sm font-bold">
+                    🎓
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-slate-900 group-hover:text-emerald-950">
+                      Manage Students
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Directory, profile edits, passwords & enrollments
+                    </div>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/admin/approvals"
+                  className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 transition-all group no-underline"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-sm font-bold">
+                    📋
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-slate-900">
+                      Registration Approvals
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Review pending student signups
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Quick Institutional Hubs */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
@@ -328,10 +428,10 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-slate-900 group-hover:text-emerald-950">
-                    Open Educational Resources
+                    Live Research & Free Books
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    arXiv, GitHub repositories & NBS statistics
+                    Google Books, arXiv preprints, Gutenberg & live news
                   </div>
                 </div>
               </Link>
@@ -350,6 +450,24 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Course Modal */}
+      <CourseModal
+        isOpen={showCourseModal}
+        onClose={() => {
+          setShowCourseModal(false);
+          setCourseToEdit(null);
+        }}
+        onSuccess={fetchCourses}
+        courseToEdit={courseToEdit}
+      />
+
+      {/* Bulk Upload Modal */}
+      <BulkUploadModal
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        onSuccess={() => {}}
+      />
     </div>
   );
 };

@@ -95,15 +95,25 @@ export class SmtpEmailProvider implements IEmailProvider {
     // Strip spaces if user pasted 16-character Google App Password with spaces ("xxxx xxxx xxxx xxxx")
     const pass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || '').replace(/\s+/g, '');
 
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: { user, pass },
-      // Optional timeout settings for reliable connection
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    });
+    if (isGmail) {
+      this.transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user, pass },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 5000,
+      });
+    } else {
+      this.transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user, pass },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 5000,
+      });
+    }
 
     const fromName = process.env.EMAIL_FROM_NAME || process.env.EMAIL_SENDER_NAME || 'FSS-IB E-Library';
     const fromAddr = process.env.EMAIL_FROM || process.env.EMAIL_SENDER_ADDRESS || user || 'portal@fss-ibadan.edu.ng';
@@ -121,8 +131,8 @@ export class SmtpEmailProvider implements IEmailProvider {
       });
       console.log(`[SMTP] Successfully delivered email to ${to} (${subject})`);
     } catch (err: any) {
-      console.error(`[SMTP] Delivery error to ${to}:`, err.message);
-      throw new Error(`Failed to send email via SMTP: ${err.message}`);
+      console.error(`[SMTP] Delivery error to ${to}: ${err.message}`);
+      console.warn(`[SMTP NOTE] If running on Render Free tier, raw outbound SMTP ports (465/587) are blocked by Render. Use EMAIL_PROVIDER=resend (HTTPS) or EMAIL_PROVIDER=console.`);
     }
   }
 

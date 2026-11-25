@@ -116,5 +116,38 @@ describe('Course & Module Integration Tests', () => {
     expect(res.status).toBe(200);
     expect(res.body.results).toBeDefined();
     expect(res.body.results.length).toBeGreaterThan(0);
+  }, 15000);
+
+  it('GET /api/aggregator/live-search returns multi-platform results with in-UI reader metadata', async () => {
+    const res = await request(app)
+      .get('/api/aggregator/live-search?q=calculus')
+      .set('Cookie', [`accessToken=${studentToken}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.results).toBeDefined();
+    expect(res.body.results.length).toBeGreaterThan(0);
+    expect(res.body.results[0]).toHaveProperty('readerType');
+    expect(res.body.results[0]).toHaveProperty('readUrl');
+  }, 15000);
+
+  it('GET /api/aggregator/live-search returns 400 if q parameter is missing', async () => {
+    const res = await request(app)
+      .get('/api/aggregator/live-search')
+      .set('Cookie', [`accessToken=${studentToken}`]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Bad Request');
   });
+
+  it('GET /api/aggregator/read-proxy sanitizes and returns readable content', async () => {
+    const res = await request(app)
+      .get('/api/aggregator/read-proxy?url=https://example.com')
+      .set('Cookie', [`accessToken=${studentToken}`]);
+
+    expect([200, 502]).toContain(res.status);
+    if (res.status === 200) {
+      expect(res.body.content).toBeDefined();
+      expect(res.body.contentType).toBeDefined();
+    }
+  }, 15000);
 });

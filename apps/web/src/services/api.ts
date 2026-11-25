@@ -35,7 +35,10 @@ class ApiClient {
     options: RequestInit = {},
     maxRetries = 3
   ): Promise<T> {
-    const url = path.startsWith('/api') ? path : `/api${path}`;
+    const baseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const endpoint = cleanPath.startsWith('/api') ? cleanPath : `/api${cleanPath}`;
+    const url = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
     let attempt = 0;
 
     while (attempt <= maxRetries) {

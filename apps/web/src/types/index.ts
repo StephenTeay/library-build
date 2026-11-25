@@ -141,4 +141,57 @@ export interface BookImportSummary {
   errors: Array<{ row: number; title?: string; call_number?: string; reason: string }>;
 }
 
+export interface BookshelfItem {
+  id: string;
+  item_type: 'BOOK' | 'RESOURCE' | 'THESIS';
+  item_id: string;
+  shelf_status: 'WANT_TO_READ' | 'CURRENTLY_READING' | 'FAVORITE' | 'FINISHED';
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  title?: string;
+  author_or_creator?: string;
+  call_number?: string;
+  cover_url?: string;
+  copies_available?: number;
+  resource_type?: string;
+  mime_type?: string;
+  file_size_bytes?: number;
+  programme?: string;
+  academic_session?: string;
+}
+
+export interface CourseReserve {
+  id: string;
+  course_id: number;
+  item_type: 'BOOK' | 'RESOURCE';
+  item_id: string;
+  requirement_level: 'REQUIRED' | 'RECOMMENDED';
+  notes?: string | null;
+  created_at: string;
+  title?: string;
+  author?: string;
+  call_number?: string;
+  copies_available?: number;
+  copies_total?: number;
+  cover_url?: string;
+  resource_type?: string;
+  mime_type?: string;
+}
+
+export interface AggregatorItem {
+  id: string;
+  source: 'arXiv' | 'Google Books' | 'Open Library' | 'Project Gutenberg' | 'Academic & Tech News' | 'GitHub' | 'Curated Hub';
+  title: string;
+  description: string;
+  authors?: string;
+  published?: string;
+  thumbnail?: string;
+  category?: string;
+  readerType: 'pdf' | 'google_books' | 'open_library' | 'gutenberg' | 'news' | 'external';
+  readUrl: string;
+  externalUrl: string;
+}
+
+
 
